@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Small repository check for the generated Geode menu source.
+"""Small repository check for Geode menu source files.
 
 This catches the exact class of regressions that previously broke Android CI:
 accidentally duplicated ModernMenu handler/helper definitions, and menu_selector
@@ -14,11 +14,15 @@ from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "src" / "main.cpp"
+SOURCES = sorted((ROOT / "src").glob("*.cpp"))
 
 
 def main() -> int:
-    source = SOURCE.read_text(encoding="utf-8")
+    if not SOURCES:
+        print("No src/*.cpp files found", file=sys.stderr)
+        return 1
+
+    source = "\n".join(path.read_text(encoding="utf-8") for path in SOURCES)
 
     member_names = re.findall(r"^\s{4}void\s+(\w+)\s*\(", source, flags=re.MULTILINE)
     counts = Counter(member_names)
@@ -34,7 +38,8 @@ def main() -> int:
             print("menu_selector callbacks without handlers:", ", ".join(missing_selectors), file=sys.stderr)
         return 1
 
-    print(f"OK: {len(member_names)} void definitions checked, {len(selectors)} menu selectors resolved")
+    files = ", ".join(str(path.relative_to(ROOT)) for path in SOURCES)
+    print(f"OK: {len(member_names)} void definitions checked, {len(selectors)} menu selectors resolved in {files}")
     return 0
 
 
