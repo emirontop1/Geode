@@ -1,3 +1,18 @@
+/*
+ *  Emir Hub v3 — Geode / GD 2.2081 / Android aarch64
+ *
+ *  ✓ Noclip
+ *  ✓ AutoPlay  (cube/ship/ball/bird/wave/robot/spider/swing)
+ *  ✓ Trajectory Preview (sarı = zıplarsan, kırmızı = mevcut yörünge)
+ *  ✓ Güzel UI (panel + renk feedback)
+ *
+ *  NOT: m_isOnGround PlayerObject'ta doğrudan erişilebilir
+ *       (Geode bindings'de PlayerCheckpoint ile aynı layout paylaşılır).
+ *       getActiveMode() → GameObjectType enum değerleri:
+ *         Cube=1, Ship=2, Ball=3, UFO/Bird=6, Wave=8,
+ *         Robot=9, Spider=10, Swing=11
+ */
+
 #include <Geode/Geode.hpp>
 #include <Geode/modify/PlayLayer.hpp>
 #include <Geode/ui/Notification.hpp>
@@ -5,495 +20,390 @@
 using namespace geode::prelude;
 using namespace cocos2d;
 
-// ─────────────────────────────────────────
-//  Global State
-// ─────────────────────────────────────────
+// ══════════════════════════════════════════════════════
+//  Global durum
+// ══════════════════════════════════════════════════════
 
-namespace {
-    bool g_noclip    = false;
-    bool g_autoPlay  = false;
-    bool g_menuOpen  = false;
+namespace EH {
+    bool noclip     = false;
+    bool autoPlay   = false;
+    bool traj       = true;
+    bool menuOpen   = false;
 
-    // Trajectory preview overlay pointer
-    // (PlayLayer'a her girişte yeniden oluşturulur)
-    CCDrawNode* g_trajectoryNode = nullptr;
+    CCDrawNode* drawNode = nullptr;
 }
 
-// ─────────────────────────────────────────
-//  Yardımcı: Toast Bildirimi
-// ─────────────────────────────────────────
+// ══════════════════════════════════════════════════════
+//  Bildirim
+// ══════════════════════════════════════════════════════
 
-void toast(const char* txt) {
-    Notification::create(txt, NotificationIcon::Info)->show();
+static void notif(const char* msg) {
+    Notification::create(msg, NotificationIcon::Success)->show();
 }
 
-// ─────────────────────────────────────────
-//  Yörünge Simülasyonu
-//
-//  GD fizik sabitleri (yaklaşık, normal hızda):
-//    GRAVITY  ≈ -0.958  (kare başına uyg. ivme, dt=1/60)
-//    JUMP_VY  ≈  11.180 (pushButton anında dikey hız)
-//    FALL_VY  ≈ -28.0   (terminal hız tavanı)
-//
-//  simulate() → adım adım euler entegrasyonu ile
-//  tahmini pozisyonları döndürür.
-// ─────────────────────────────────────────
+// ══════════════════════════════════════════════════════
+//  Yörünge simülasyonu
+// ══════════════════════════════════════════════════════
 
-namespace Physics {
-    constexpr float GRAVITY   = -0.958f;
-    constexpr float JUMP_VY   =  11.18f;
+namespace Sim {
+    constexpr float G_ACC     = -0.9f;
+    constexpr float JUMP_V    =  11.2f;
     constexpr float TERMINAL  = -28.0f;
-    constexpr int   STEPS     =  120;    // ~2 saniyelik tahmin (60fps)
-    constexpr float DT        =  1.0f;   // "1 frame" birimi
+    constexpr int   STEPS     = 90;
 
-    struct State {
-        float x, y, vx, vy;
-    };
-
-    // Tek adım euler
-    State step(State s, bool holding) {
-        float ay = GRAVITY;
-        if (holding && s.vy < 0.f) ay *= 0.5f; // basılı tutunca düşüş yavaşlar
-
-        s.vy += ay * DT;
-        if (s.vy < TERMINAL) s.vy = TERMINAL;
-
-        s.x += s.vx * DT;
-        s.y += s.vy * DT;
-
-        return s;
+    // Genel (cube / robot / spider / ball)
+    std::vector<CCPoint> run(float sx, float sy,
+                             float vx, float vy)
+    {
+        std::vector<CCPoint> pts;
+        float x = sx, y = sy;
+        for (int i = 0; i < STEPS; ++i) {
+            vy += G_ACC;
+            if (vy < TERMINAL) vy = TERMINAL;
+            x += vx; y += vy;
+            pts.push_back({x, y});
+            if (y < -200.f) break;
+        }
+        return pts;
     }
 
-    // STEPS kadar simüle et, her noktayı kaydet
-    std::vector<CCPoint> simulate(
-        float startX, float startY,
-        float vx, float vy,
-        bool holding
-    ) {
+    // Ship / UFO
+    std::vector<CCPoint> runShip(float sx, float sy,
+                                 float vx, float vy,
+                                 bool hold)
+    {
         std::vector<CCPoint> pts;
-        pts.reserve(STEPS);
-
-        State s { startX, startY, vx, vy };
-
+        float x = sx, y = sy;
         for (int i = 0; i < STEPS; ++i) {
-            s = step(s, holding);
-            pts.push_back({ s.x, s.y });
-
-            // Zemin altına düştüyse dur
-            if (s.y < -100.f) break;
+            float ay = G_ACC * 0.55f + (hold ? 0.38f : 0.f);
+            vy += ay;
+            if (vy >  14.f) vy =  14.f;
+            if (vy < -14.f) vy = -14.f;
+            x += vx; y += vy;
+            pts.push_back({x, y});
+            if (y < -200.f || y > 700.f) break;
         }
-
         return pts;
     }
 }
 
-// ─────────────────────────────────────────
-//  Yörünge Çizici
-//
-//  İki set nokta:
-//    jumpPts  → şu an zıplarsa (sarı)
-//    fallPts  → zıplamazsa / mevcut yörünge (kırmızı)
-//  Her setin sonuna ok başlığı eklenir.
-// ─────────────────────────────────────────
+// ══════════════════════════════════════════════════════
+//  Yörünge çizimi
+// ══════════════════════════════════════════════════════
 
-void drawArrow(CCDrawNode* node, const std::vector<CCPoint>& pts,
-               ccColor4F color, float lineWidth = 2.f)
+static void drawArrow(CCDrawNode* dn,
+                      const std::vector<CCPoint>& pts,
+                      ccColor4F col, float w = 2.f)
 {
-    if (pts.size() < 2) return;
+    if (pts.size() < 3) return;
+    for (size_t i = 0; i + 1 < pts.size(); ++i)
+        dn->drawSegment(pts[i], pts[i+1], w, col);
 
-    // Çizgi segmentleri
-    for (size_t i = 0; i + 1 < pts.size(); ++i) {
-        node->drawSegment(pts[i], pts[i + 1], lineWidth, color);
+    auto tip = pts.back();
+    auto prv = pts[pts.size()-3];
+    float a  = ccpToAngle(ccpSub(tip, prv));
+    float L  = 13.f, sp = 0.48f;
+    dn->drawSegment(tip,
+        ccp(tip.x - L*cosf(a-sp), tip.y - L*sinf(a-sp)), w+0.6f, col);
+    dn->drawSegment(tip,
+        ccp(tip.x - L*cosf(a+sp), tip.y - L*sinf(a+sp)), w+0.6f, col);
+}
+
+static void refreshTraj(PlayLayer* pl) {
+    if (!EH::drawNode) return;
+    EH::drawNode->clear();
+    if (!EH::traj || !pl) return;
+
+    auto* p = pl->m_player1;
+    if (!p) return;
+
+    float px = p->getPositionX();
+    float py = p->getPositionY();
+    float vx = (float)p->getCurrentXVelocity();
+    float vy = (float)p->getYVelocity();
+
+    // GameObjectType int değerleri
+    int mode = (int)p->getActiveMode();
+    bool shipLike = (mode == 2 || mode == 6); // Ship, UFO/Bird
+
+    ccColor4F yellow = {1.f, 0.93f, 0.10f, 0.92f};
+    ccColor4F red    = {1.f, 0.22f, 0.22f, 0.92f};
+
+    if (shipLike) {
+        drawArrow(EH::drawNode,
+                  Sim::runShip(px, py, vx, vy, true),  yellow);
+        drawArrow(EH::drawNode,
+                  Sim::runShip(px, py, vx, vy, false), red);
+    } else {
+        drawArrow(EH::drawNode,
+                  Sim::run(px, py, vx, Sim::JUMP_V), yellow);
+        drawArrow(EH::drawNode,
+                  Sim::run(px, py, vx, vy),          red);
     }
-
-    // Ok başlığı (son 2 nokta üzerinden açı hesabı)
-    CCPoint tip  = pts.back();
-    CCPoint prev = pts[pts.size() - 2];
-
-    float angle = ccpToAngle(ccpSub(tip, prev));
-
-    float headLen  = 14.f;
-    float headAngle = 0.45f; // radyan (~26°)
-
-    CCPoint left = ccpAdd(tip, CCPoint(
-        -headLen * cosf(angle - headAngle),
-        -headLen * sinf(angle - headAngle)
-    ));
-    CCPoint right = ccpAdd(tip, CCPoint(
-        -headLen * cosf(angle + headAngle),
-        -headLen * sinf(angle + headAngle)
-    ));
-
-    node->drawSegment(tip, left,  lineWidth + 1.f, color);
-    node->drawSegment(tip, right, lineWidth + 1.f, color);
 }
 
-void updateTrajectory(PlayLayer* pl) {
-    if (!g_trajectoryNode) return;
-    if (!pl) return;
-
-    auto player = pl->m_player1;
-    if (!player) return;
-
-    g_trajectoryNode->clear();
-
-    float px = player->getPositionX();
-    float py = player->getPositionY();
-    float vx = player->m_playerSpeed * 5.7f; // yaklaşık yatay hız
-    float vy = player->getYVelocity();
-
-    // ---- Sarı: Zıplarsa ----
-    // Ship/wave için farklı jump vy
-    float jumpVY = Physics::JUMP_VY;
-    if (player->m_isShip)  jumpVY =  8.0f;
-    if (player->m_isDart)  jumpVY =  6.0f;
-    if (player->m_isBall)  jumpVY =  9.5f;
-    if (player->m_isBird)   jumpVY =  7.5f;
-    if (player->m_isRobot) jumpVY = 11.0f;
-    if (player->m_isSpider) jumpVY = 10.0f;
-
-    auto jumpPts = Physics::simulate(px, py, vx, jumpVY, true);
-    auto fallPts = Physics::simulate(px, py, vx, vy,     false);
-
-    // Sarı ok: "zıplarsan buraya gidersin"
-    ccColor4F yellow = { 1.f, 0.95f, 0.2f, 0.85f };
-    drawArrow(g_trajectoryNode, jumpPts, yellow, 2.0f);
-
-    // Kırmızı ok: "zıplamazsan / şu anki yörüngede"
-    ccColor4F red = { 1.f, 0.25f, 0.25f, 0.85f };
-    drawArrow(g_trajectoryNode, fallPts, red, 2.0f);
-}
-
-// ─────────────────────────────────────────
-//  İleriyi Gören AutoPlay
+// ══════════════════════════════════════════════════════
+//  AutoPlay
 //
-//  Strateji:
-//  1. Önündeki ~200 px'e (yaklaşık 35 frame) bak.
-//  2. Mevcut yörüngede engel/boşluk var mı simüle et.
-//  3. Zıplayınca daha iyi pozisyonda mı olur?
-//  4. Ship/Wave: Y konumuna göre irtifa kontrolü.
-//  5. Cube/Robot/Spider: zemin tespiti + öngörü.
-// ─────────────────────────────────────────
+//  m_isOnGround: PlayerObject'ta MEVCUT
+//  (Geode 2.2081 bindings'de GJBaseGameLayer PAD içinde
+//   PlayerObject* m_player1 ve alanları expose edilmiş)
+// ══════════════════════════════════════════════════════
 
-namespace AutoPlay {
+namespace AP {
 
-    // Simülasyondan gelen noktaların ortalama Y'sini döndür
-    // (yüksekliği karşılaştırmak için kullanılır)
-    float avgY(const std::vector<CCPoint>& pts, int count = 20) {
-        if (pts.empty()) return 0.f;
-        float sum = 0.f;
-        int   n   = std::min((int)pts.size(), count);
-        for (int i = 0; i < n; ++i) sum += pts[i].y;
-        return sum / n;
-    }
+    void tick(PlayLayer* pl) {
+        if (!EH::autoPlay || !pl) return;
+        auto* p = pl->m_player1;
+        if (!p) return;
 
-    // Oyuncu önündeki yakın alandaki ortalama zemin yüksekliğini
-    // PlayLayer'dan çekmeye çalışır (basit yaklaşım: raycast yok,
-    // oyuncunun Y'sini referans alır)
-    // GD'nin collision sistemi kapalı olduğundan simülasyon
-    // puanlama üzerinden karar verilir.
+        float py   = p->getPositionY();
+        float vy   = (float)p->getYVelocity();
+        int   mode = (int)p->getActiveMode();
 
-    void run(PlayLayer* pl) {
-        if (!g_autoPlay) return;
-        if (!pl) return;
+        // ── Ship (2) ──────────────────────────────────
+        if (mode == 2) {
+            if (py < 155.f) p->pushButton(PlayerButton::Jump);
+            else            p->releaseButton(PlayerButton::Jump);
+            return;
+        }
 
-        auto player = pl->m_player1;
-        if (!player) return;
-
-        float px = player->getPositionX();
-        float py = player->getPositionY();
-        float vx = player->m_playerSpeed * 5.7f;
-        float vy = player->getYVelocity();
-
-        // ── Ship: yüksekliği orta bölgede tut ──
-        if (player->m_isShip) {
-            float target = 165.f; // ekranın ortası civarı
-            if (py < target - 15.f)
-                player->pushButton(PlayerButton::Jump);
+        // ── Ball (3) ──────────────────────────────────
+        if (mode == 3) {
+            // Ball: zıpla veya yerçekimini ters çevir
+            // getYVelocity <= 0 ve zemine yakınken zıpla
+            if (vy <= 0.f && py < 120.f)
+                p->pushButton(PlayerButton::Jump);
             else
-                player->releaseButton(PlayerButton::Jump);
+                p->releaseButton(PlayerButton::Jump);
             return;
         }
 
-        // ── Wave: ani hız değişimlerine tepki ver ──
-        if (player->m_isDart) {
-            if (vy < -3.f)
-                player->pushButton(PlayerButton::Jump);
-            else if (vy > 3.f)
-                player->releaseButton(PlayerButton::Jump);
+        // ── UFO/Bird (6) ──────────────────────────────
+        if (mode == 6) {
+            if (py < 150.f) p->pushButton(PlayerButton::Jump);
+            else            p->releaseButton(PlayerButton::Jump);
             return;
         }
 
-        // ── UFO: sallantıyı azalt, orta bölge ──
-        if (player->m_isBird) {
-            float target = 160.f;
-            if (py < target)
-                player->pushButton(PlayerButton::Jump);
-            else
-                player->releaseButton(PlayerButton::Jump);
+        // ── Wave/Dart (8) ─────────────────────────────
+        if (mode == 8) {
+            if      (vy < -2.5f) p->pushButton(PlayerButton::Jump);
+            else if (vy >  2.5f) p->releaseButton(PlayerButton::Jump);
             return;
         }
 
-        // ── Ball: yere değince zıpla ──
-        if (player->m_isBall) {
-            if (player->m_isOnGround && vy <= 0.f)
-                player->pushButton(PlayerButton::Jump);
-            else
-                player->releaseButton(PlayerButton::Jump);
+        // ── Swing (11) ────────────────────────────────
+        if (mode == 11) {
+            if (py < 148.f) p->pushButton(PlayerButton::Jump);
+            else            p->releaseButton(PlayerButton::Jump);
             return;
         }
 
-        // ── Cube / Robot / Spider: öngörülü zıplama ──
-        // Mevcut yörünge ile zıplama yörüngesini karşılaştır.
-        // 30 frame (0.5sn) sonraki ortalama Y'ye bak.
-        // Zıpladığımızda daha yüksekte miyiz? Zıpla.
-        // Ama çok yüksekte uçmayalım (üst sınır kontrolü).
-
-        auto fallPts = Physics::simulate(px, py, vx, vy, false);
-        auto jumpPts = Physics::simulate(px, py, vx, Physics::JUMP_VY, true);
-
-        float fallAvg = avgY(fallPts, 30);
-        float jumpAvg = avgY(jumpPts, 30);
-
-        // Çok alçaksa kesinlikle zıpla
-        bool tooLow    = py < 85.f;
-        // Çok yüksekse zıplama
-        bool tooHigh   = py > 270.f;
-        // Düşüyor ve zemine yakın
-        bool fallingLow = (vy < -3.f && py < 130.f);
-
-        if (tooHigh) {
-            player->releaseButton(PlayerButton::Jump);
+        // ── Cube (1) / Robot (9) / Spider (10) / default ──
+        // Yükseklik güvenlik sınırları
+        if (py > 295.f) {
+            p->releaseButton(PlayerButton::Jump);
             return;
         }
-
-        if (tooLow || fallingLow) {
-            player->pushButton(PlayerButton::Jump);
+        if (py < 75.f) {
+            p->pushButton(PlayerButton::Jump);
             return;
         }
-
-        // Genel öngörü kararı
-        if (
-            player->m_isOnGround &&
-            vy <= 0.f &&
-            jumpAvg > fallAvg + 5.f
-        ) {
-            player->pushButton(PlayerButton::Jump);
-        }
-        else {
-            player->releaseButton(PlayerButton::Jump);
-        }
+        // Yer çekimi ve düşüş ile zıplama: dikey hız ≤0
+        if (vy <= 0.f)
+            p->pushButton(PlayerButton::Jump);
+        else
+            p->releaseButton(PlayerButton::Jump);
     }
 }
 
-// ─────────────────────────────────────────
-//  Emir Menü (UI Katmanı)
-// ─────────────────────────────────────────
+// ══════════════════════════════════════════════════════
+//  UI — EmirHubMenu
+//
+//  Tasarım: Yarı saydam siyah CCLayerColor panel
+//           + Altın başlık etiketi
+//           + CCMenuItemSpriteExtra butonlar
+//           Aktif buton = yeşil, pasif = beyaz
+// ══════════════════════════════════════════════════════
 
-class EmirMenu : public CCLayer {
+namespace Tags {
+    constexpr int NOCLIP   = 201;
+    constexpr int AUTOPLAY = 202;
+    constexpr int TRAJ     = 203;
+    constexpr int CLOSE    = 204;
+}
+
+class EmirHubMenu : public CCLayer {
+    CCMenu*       m_menu  = nullptr;
+    CCLayerColor* m_panel = nullptr;
+
 public:
-    CCMenu*       m_menu = nullptr;
-    CCLayerColor* m_bg   = nullptr;
-
-    static EmirMenu* create() {
-        auto ret = new EmirMenu();
-        if (ret && ret->init()) {
-            ret->autorelease();
-            return ret;
-        }
-        CC_SAFE_DELETE(ret);
-        return nullptr;
+    static EmirHubMenu* create() {
+        auto* r = new EmirHubMenu();
+        if (r && r->init()) { r->autorelease(); return r; }
+        CC_SAFE_DELETE(r); return nullptr;
     }
 
     bool init() override {
         if (!CCLayer::init()) return false;
-
-        auto win = CCDirector::sharedDirector()->getWinSize();
-
         this->setTouchEnabled(false);
 
-        // ── Arkaplan ──
-        m_bg = CCLayerColor::create({ 0, 0, 0, 140 }, 280.f, 240.f);
-        m_bg->setPosition({
-            win.width / 2 - 140.f,
-            win.height / 2 - 120.f
-        });
-        m_bg->setVisible(false);
-        this->addChild(m_bg, 100);
+        auto ws = CCDirector::sharedDirector()->getWinSize();
+        const float PW = 270.f, PH = 215.f;
+        const float CX = ws.width / 2.f, CY = ws.height / 2.f;
 
+        // ── Panel ──────────────────────────────────
+        m_panel = CCLayerColor::create(
+            {10, 10, 20, 185}, PW, PH);
+        m_panel->setPosition({CX - PW/2, CY - PH/2});
+        m_panel->setVisible(false);
+        this->addChild(m_panel, 100);
+
+        // Panel başlık
+        {
+            auto* lbl = CCLabelBMFont::create(
+                "Emir Hub", "goldFont.fnt");
+            lbl->setScale(0.70f);
+            lbl->setPosition({PW/2, PH - 18.f});
+            m_panel->addChild(lbl);
+
+            // ince ayraç çizgisi (CCLayerColor)
+            auto* line = CCLayerColor::create(
+                {255,255,255,60}, PW - 20.f, 1.f);
+            line->setPosition({10.f, PH - 32.f});
+            m_panel->addChild(line);
+        }
+
+        // ── Buton menüsü ──────────────────────────
         m_menu = CCMenu::create();
         m_menu->setPosition(0, 0);
         this->addChild(m_menu, 101);
 
-        // ── Aç/Kapat Düğmesi (her zaman görünür) ──
-        auto openBtn = CCMenuItemSpriteExtra::create(
-            ButtonSprite::create("EH", 80, true,
-                "goldFont.fnt", "GJ_button_04.png", 30.f, 1.f),
-            this,
-            menu_selector(EmirMenu::onOpen)
-        );
-        openBtn->setPosition({ 60.f, win.height / 2 });
-        m_menu->addChild(openBtn);
+        // Açma butonu (her zaman görünür)
+        {
+            auto* btn = CCMenuItemSpriteExtra::create(
+                ButtonSprite::create("EH", 48, true,
+                    "goldFont.fnt", "GJ_button_04.png", 28.f, 1.f),
+                this,
+                menu_selector(EmirHubMenu::onMenu));
+            btn->setPosition({50.f, CY});
+            m_menu->addChild(btn);
+        }
 
-        // ── Noclip ──
-        buildBtn("Noclip",    "GJ_button_01.png", 1000,
-                 win.width / 2, win.height / 2 + 75.f,
-                 menu_selector(EmirMenu::onNoclip));
+        // Panel butonları
+        mkBtn("Noclip",    Tags::NOCLIP,
+              CX, CY + 60.f, menu_selector(EmirHubMenu::onNoclip));
+        mkBtn("Auto Play", Tags::AUTOPLAY,
+              CX, CY + 10.f, menu_selector(EmirHubMenu::onAutoPlay));
+        mkBtn("Trajectory",Tags::TRAJ,
+              CX, CY - 40.f, menu_selector(EmirHubMenu::onTraj));
+        mkBtn("Kapat",     Tags::CLOSE,
+              CX, CY - 90.f, menu_selector(EmirHubMenu::onMenu));
 
-        // ── AutoPlay ──
-        buildBtn("Auto Play", "GJ_button_05.png", 1001,
-                 win.width / 2, win.height / 2 + 25.f,
-                 menu_selector(EmirMenu::onAutoPlay));
-
-        // ── Trajectory ──
-        buildBtn("Trajectory","GJ_button_02.png", 1002,
-                 win.width / 2, win.height / 2 - 25.f,
-                 menu_selector(EmirMenu::onTrajectory));
-
-        // ── Kapat ──
-        buildBtn("Close",     "GJ_button_06.png", 1003,
-                 win.width / 2, win.height / 2 - 75.f,
-                 menu_selector(EmirMenu::onOpen));
-
-        // Başlangıçta menü kapalı
-        setMenuVisible(false);
+        setPanelVis(false);
         return true;
     }
 
-    // ---- Yardımcı: Düğme Oluştur ----
-    void buildBtn(const char* text, const char* sprite, int tag,
-                  float x, float y, SEL_MenuHandler sel)
+    // ─ Buton oluştur
+    void mkBtn(const char* txt, int tag,
+               float x, float y, SEL_MenuHandler sel)
     {
-        auto btn = CCMenuItemSpriteExtra::create(
-            ButtonSprite::create(text, 130, true,
-                "goldFont.fnt", sprite, 25.f, 0.8f),
-            this, sel
-        );
-        btn->setPosition({ x, y });
+        auto* sp = ButtonSprite::create(
+            txt, 145, true, "bigFont.fnt",
+            "GJ_button_01.png", 25.f, 0.78f);
+
+        auto* btn = CCMenuItemSpriteExtra::create(sp, this, sel);
+        btn->setPosition({x, y});
         btn->setTag(tag);
         m_menu->addChild(btn);
     }
 
-    void setMenuVisible(bool v) {
-        for (int tag = 1000; tag <= 1003; ++tag) {
-            auto child = m_menu->getChildByTag(tag);
-            if (child) child->setVisible(v);
-        }
-        if (m_bg) m_bg->setVisible(v);
+    // ─ Görünürlük
+    void setPanelVis(bool v) {
+        for (int t = Tags::NOCLIP; t <= Tags::CLOSE; ++t)
+            if (auto* c = m_menu->getChildByTag(t))
+                c->setVisible(v);
+        m_panel->setVisible(v);
     }
 
-    void updateButtonLabels() {
-        // Noclip rengi — CCNode* → CCMenuItemSpriteExtra* cast
-        auto noclipNode = static_cast<CCMenuItemSpriteExtra*>(
-            m_menu->getChildByTag(1000)
-        );
-        if (noclipNode) {
-            noclipNode->setColor(
-                g_noclip ? ccColor3B{80,255,80} : ccColor3B{255,255,255}
-            );
-        }
-        // AutoPlay rengi
-        auto autoNode = static_cast<CCMenuItemSpriteExtra*>(
-            m_menu->getChildByTag(1001)
-        );
-        if (autoNode) {
-            autoNode->setColor(
-                g_autoPlay ? ccColor3B{80,255,80} : ccColor3B{255,255,255}
-            );
+    // ─ Renk feedback
+    void syncColors() {
+        struct { int t; bool on; } map[] = {
+            {Tags::NOCLIP,   EH::noclip  },
+            {Tags::AUTOPLAY, EH::autoPlay},
+            {Tags::TRAJ,     EH::traj    },
+        };
+        for (auto& e : map) {
+            auto* node = m_menu->getChildByTag(e.t);
+            if (!node) continue;
+            // CCMenuItemSpriteExtra → CCRGBAProtocol üzerinden setColor
+            if (auto* rgba = dynamic_cast<CCRGBAProtocol*>(node))
+                rgba->setColor(e.on
+                    ? ccColor3B{90,255,90}
+                    : ccColor3B{255,255,255});
         }
     }
 
-    // ── Callback'ler ──
-
-    void onOpen(CCObject*) {
-        g_menuOpen = !g_menuOpen;
-        setMenuVisible(g_menuOpen);
-        updateButtonLabels();
+    // ─ Callback'ler
+    void onMenu(CCObject*) {
+        EH::menuOpen = !EH::menuOpen;
+        setPanelVis(EH::menuOpen);
+        syncColors();
     }
-
     void onNoclip(CCObject*) {
-        g_noclip = !g_noclip;
-        updateButtonLabels();
-        toast(g_noclip ? "Noclip Enabled" : "Noclip Disabled");
+        EH::noclip = !EH::noclip;
+        syncColors();
+        notif(EH::noclip ? "Noclip: Açık" : "Noclip: Kapalı");
     }
-
     void onAutoPlay(CCObject*) {
-        g_autoPlay = !g_autoPlay;
-        updateButtonLabels();
-        toast(g_autoPlay ? "AutoPlay Enabled" : "AutoPlay Disabled");
+        EH::autoPlay = !EH::autoPlay;
+        syncColors();
+        notif(EH::autoPlay ? "AutoPlay: Açık" : "AutoPlay: Kapalı");
     }
-
-    // Trajectory toggle: g_trajectoryNode'u göster/gizle
-    void onTrajectory(CCObject*) {
-        if (g_trajectoryNode) {
-            bool vis = !g_trajectoryNode->isVisible();
-            g_trajectoryNode->setVisible(vis);
-            toast(vis ? "Trajectory Enabled" : "Trajectory Disabled");
-        }
+    void onTraj(CCObject*) {
+        EH::traj = !EH::traj;
+        if (!EH::traj && EH::drawNode) EH::drawNode->clear();
+        syncColors();
+        notif(EH::traj ? "Trajectory: Açık" : "Trajectory: Kapalı");
     }
 };
 
-// ─────────────────────────────────────────
-//  PlayLayer Hook
-// ─────────────────────────────────────────
+// ══════════════════════════════════════════════════════
+//  PlayLayer hook
+// ══════════════════════════════════════════════════════
 
 class $modify(MyPlayLayer, PlayLayer) {
 
-    // ── Init ──
-    bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
-        if (!PlayLayer::init(level, useReplay, dontCreateObjects))
-            return false;
+    bool init(GJGameLevel* lvl, bool replay, bool noCreate) {
+        if (!PlayLayer::init(lvl, replay, noCreate)) return false;
 
-        // ---- Trajectory Overlay ----
-        g_trajectoryNode = CCDrawNode::create();
-        g_trajectoryNode->setZOrder(9998);
-        // Başlangıçta görünür (toggle ile kapatılabilir)
-        g_trajectoryNode->setVisible(true);
-        this->addChild(g_trajectoryNode);
+        EH::drawNode = CCDrawNode::create();
+        EH::drawNode->setZOrder(9997);
+        this->addChild(EH::drawNode);
 
-        // ---- Emir Menü ----
-        auto menu = EmirMenu::create();
-        this->addChild(menu, 99999);
+        this->addChild(EmirHubMenu::create(), 99999);
 
-        toast("Emir Hub Loaded");
+        notif("Emir Hub Hazır");
         return true;
     }
 
-    // ── Her Frame ──
     void update(float dt) {
         PlayLayer::update(dt);
-
-        // AutoPlay
-        AutoPlay::run(this);
-
-        // Trajectory güncelle (sadece görünürse hesapla)
-        if (g_trajectoryNode && g_trajectoryNode->isVisible()) {
-            updateTrajectory(this);
-        }
+        AP::tick(this);
+        refreshTraj(this);
     }
 
-    // ── Oyuncu Ölümü (Noclip) ──
     void destroyPlayer(PlayerObject* player, GameObject* obj) {
-        if (g_noclip) return;
+        if (EH::noclip) return;
         PlayLayer::destroyPlayer(player, obj);
-    }
-
-    // ── Level Resetlendi veya Bitirildi ──
-    // Trajectory node referansını temizle
-    void resetLevel() {
-        PlayLayer::resetLevel();
-        // resetLevel sonrası node hâlâ aynı sahnede yaşıyor,
-        // sadece içeriğini temizle
-        if (g_trajectoryNode) {
-            g_trajectoryNode->clear();
-        }
     }
 };
 
-// ─────────────────────────────────────────
-//  Mod Yüklendiğinde
-// ─────────────────────────────────────────
+// ══════════════════════════════════════════════════════
+//  Mod yüklenişi
+// ══════════════════════════════════════════════════════
 
 $on_mod(Loaded) {
-    log::info("Emir Hub Loaded — AutoPlay + Trajectory Edition");
+    log::info("Emir Hub v3 yüklendi");
 }
