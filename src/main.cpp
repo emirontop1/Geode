@@ -7,6 +7,7 @@ using namespace cocos2d;
 
 namespace {
     bool g_noclip = false;
+    bool g_autoPlay = false;
     bool g_menuOpen = false;
 }
 
@@ -15,6 +16,82 @@ void toast(const char* txt) {
         txt,
         NotificationIcon::Info
     )->show();
+}
+
+bool shouldJump(PlayerObject* player) {
+    if (!player)
+        return false;
+
+    /*
+        Basit mantık:
+        yere değince zıpla.
+        cube / robot / spider için çalışır.
+    */
+
+    if (
+        player->m_isOnGround &&
+        player->getYVelocity() <= 0.f
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
+void runAutoPlay(PlayLayer* pl) {
+    if (!g_autoPlay)
+        return;
+
+    if (!pl)
+        return;
+
+    auto player = pl->m_player1;
+
+    if (!player)
+        return;
+
+    /*
+        Ship auto fly
+    */
+
+    if (player->m_isShip) {
+
+        if (player->getPositionY() < 120.f) {
+            player->pushButton(PlayerButton::Jump);
+        }
+        else {
+            player->releaseButton(PlayerButton::Jump);
+        }
+
+        return;
+    }
+
+    /*
+        Wave auto
+    */
+
+    if (player->m_isDart) {
+
+        if (player->getYVelocity() < -2.f) {
+            player->pushButton(PlayerButton::Jump);
+        }
+        else {
+            player->releaseButton(PlayerButton::Jump);
+        }
+
+        return;
+    }
+
+    /*
+        Cube auto
+    */
+
+    if (shouldJump(player)) {
+        player->pushButton(PlayerButton::Jump);
+    }
+    else {
+        player->releaseButton(PlayerButton::Jump);
+    }
 }
 
 class EmirMenu : public CCLayer {
@@ -40,17 +117,21 @@ public:
 
         auto win = CCDirector::sharedDirector()->getWinSize();
 
+        /*
+            DOKUNMATİK BOZULMASIN DİYE FALSE
+        */
+
         this->setTouchEnabled(false);
 
         m_bg = CCLayerColor::create(
             {0, 0, 0, 120},
             260.f,
-            180.f
+            220.f
         );
 
         m_bg->setPosition({
             win.width / 2 - 130.f,
-            win.height / 2 - 90.f
+            win.height / 2 - 110.f
         });
 
         m_bg->setVisible(false);
@@ -61,6 +142,10 @@ public:
         m_menu->setPosition(0, 0);
 
         this->addChild(m_menu, 101);
+
+        /*
+            OPEN BUTTON
+        */
 
         auto openBtn = CCMenuItemSpriteExtra::create(
             ButtonSprite::create(
@@ -83,6 +168,10 @@ public:
 
         m_menu->addChild(openBtn);
 
+        /*
+            NOCLIP
+        */
+
         auto noclipBtn = CCMenuItemSpriteExtra::create(
             ButtonSprite::create(
                 "Noclip",
@@ -99,10 +188,39 @@ public:
 
         noclipBtn->setPosition({
             win.width / 2,
-            win.height / 2 + 40.f
+            win.height / 2 + 50.f
         });
 
         m_menu->addChild(noclipBtn);
+
+        /*
+            AUTOPLAY
+        */
+
+        auto autoBtn = CCMenuItemSpriteExtra::create(
+            ButtonSprite::create(
+                "Auto Play",
+                120,
+                true,
+                "goldFont.fnt",
+                "GJ_button_05.png",
+                25.f,
+                0.8f
+            ),
+            this,
+            menu_selector(EmirMenu::onAutoPlay)
+        );
+
+        autoBtn->setPosition({
+            win.width / 2,
+            win.height / 2
+        });
+
+        m_menu->addChild(autoBtn);
+
+        /*
+            CLOSE
+        */
 
         auto closeBtn = CCMenuItemSpriteExtra::create(
             ButtonSprite::create(
@@ -120,26 +238,32 @@ public:
 
         closeBtn->setPosition({
             win.width / 2,
-            win.height / 2 - 20.f
+            win.height / 2 - 50.f
         });
 
         m_menu->addChild(closeBtn);
 
         noclipBtn->setVisible(false);
+        autoBtn->setVisible(false);
         closeBtn->setVisible(false);
 
         noclipBtn->setTag(1000);
-        closeBtn->setTag(1001);
+        autoBtn->setTag(1001);
+        closeBtn->setTag(1002);
 
         return true;
     }
 
     void updateGUI() {
         auto noclipBtn = m_menu->getChildByTag(1000);
-        auto closeBtn = m_menu->getChildByTag(1001);
+        auto autoBtn = m_menu->getChildByTag(1001);
+        auto closeBtn = m_menu->getChildByTag(1002);
 
         if (noclipBtn)
             noclipBtn->setVisible(g_menuOpen);
+
+        if (autoBtn)
+            autoBtn->setVisible(g_menuOpen);
 
         if (closeBtn)
             closeBtn->setVisible(g_menuOpen);
@@ -161,6 +285,16 @@ public:
             g_noclip ?
             "Noclip Enabled" :
             "Noclip Disabled"
+        );
+    }
+
+    void onAutoPlay(CCObject*) {
+        g_autoPlay = !g_autoPlay;
+
+        toast(
+            g_autoPlay ?
+            "AutoPlay Enabled" :
+            "AutoPlay Disabled"
         );
     }
 };
@@ -188,6 +322,12 @@ class $modify(MyPlayLayer, PlayLayer) {
         return true;
     }
 
+    void update(float dt) {
+        PlayLayer::update(dt);
+
+        runAutoPlay(this);
+    }
+
     void destroyPlayer(
         PlayerObject* player,
         GameObject* obj
@@ -203,7 +343,6 @@ class $modify(MyPlayLayer, PlayLayer) {
 };
 
 $on_mod(Loaded) {
-    log::info("Loaded Emir Hub");
+    log::info("Emir Hub Loaded");
 }
-
 
