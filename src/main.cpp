@@ -3,18 +3,14 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
-#include <limits>
 #include <vector>
 
 using namespace geode::prelude;
 using namespace cocos2d;
-using namespace cocos2d::extension;
 
 namespace {
     constexpr auto kJumpButton = static_cast<PlayerButton>(1);
     constexpr auto kRightButton = static_cast<PlayerButton>(3);
-    constexpr auto kRayNodeTag = 0x454d4f43;
 
     struct AutoInputState {
         bool jumpHeld = false;
@@ -45,25 +41,8 @@ namespace {
         bool hasTargetY = false;
     };
 
-    struct EmocTrajectoryCandidate {
-        bool hold = false;
-        float score = -100000.f;
-        float firstHitX = std::numeric_limits<float>::max();
-        CCPoint endPoint;
-    };
-
-    struct EmocCorridorSample {
-        float targetY = 0.f;
-        float clearance = 0.f;
-        bool foundGap = false;
-    };
-
     AutoInputState g_player1Input;
     AutoInputState g_player2Input;
-    bool g_autoPlayEnabled = true;
-    bool g_visualRaysEnabled = true;
-    bool g_holdRightEnabled = true;
-    bool g_dualPlayerEnabled = true;
 
     void setJumpHeld(PlayerObject* player, AutoInputState& input, bool held) {
         if (!player || input.jumpHeld == held) {
@@ -170,29 +149,6 @@ namespace {
         return mode == PlayerMode::Cube || mode == PlayerMode::Ball || mode == PlayerMode::Robot || mode == PlayerMode::Spider;
     }
 
-    bool isTapFlightMode(PlayerMode mode) {
-        return mode == PlayerMode::Ufo || mode == PlayerMode::Swing;
-    }
-
-    bool isContinuousFlightMode(PlayerMode mode) {
-        return mode == PlayerMode::Ship || mode == PlayerMode::Wave || mode == PlayerMode::Unknown;
-    }
-
-    char const* modeName(PlayerMode mode) {
-        switch (mode) {
-            case PlayerMode::Cube: return "Cube";
-            case PlayerMode::Ship: return "Ship";
-            case PlayerMode::Ball: return "Ball";
-            case PlayerMode::Ufo: return "UFO";
-            case PlayerMode::Wave: return "Wave";
-            case PlayerMode::Robot: return "Robot";
-            case PlayerMode::Spider: return "Spider";
-            case PlayerMode::Swing: return "Swing";
-            case PlayerMode::Unknown: return "Auto";
-        }
-        return "Auto";
-    }
-
     CCRect expandedRect(GameObject* object, float paddingX, float paddingY) {
         auto rect = object->getObjectRect();
         rect.origin.x -= paddingX;
@@ -217,9 +173,9 @@ namespace {
 
     float modeLookAhead(PlayerObject* player, PlayerMode mode) {
         auto speed = player ? std::abs(static_cast<float>(player->getCurrentXVelocity())) : 0.f;
-        auto base = isGroundMode(mode) ? 0.70f : 1.05f;
-        auto minLook = isGroundMode(mode) ? 110.f : 180.f;
-        auto maxLook = isGroundMode(mode) ? 225.f : 380.f;
+        auto base = isGroundMode(mode) ? 0.62f : 0.82f;
+        auto minLook = isGroundMode(mode) ? 95.f : 140.f;
+        auto maxLook = isGroundMode(mode) ? 195.f : 275.f;
         return std::clamp(speed * base, minLook, maxLook);
     }
 
@@ -238,7 +194,7 @@ namespace {
 
             auto objectPos = object->getPosition();
             auto dx = objectPos.x - playerPos.x;
-            if (dx < -70.f || dx > lookAhead) {
+            if (dx < -65.f || dx > lookAhead) {
                 continue;
             }
             if (std::abs(objectPos.y - playerPos.y) > verticalRange) {
@@ -260,14 +216,14 @@ namespace {
         auto lookAhead = modeLookAhead(player, mode);
         auto targetY = playerPos.y;
 
-        for (auto object : collectNearbyObjects(layer, player, lookAhead, isGroundMode(mode) ? 285.f : 440.f)) {
-            auto rect = expandedRect(object, isGroundMode(mode) ? 15.f : 24.f, isGroundMode(mode) ? 14.f : 24.f);
+        for (auto object : collectNearbyObjects(layer, player, lookAhead, isGroundMode(mode) ? 260.f : 380.f)) {
+            auto rect = expandedRect(object, isGroundMode(mode) ? 14.f : 22.f, isGroundMode(mode) ? 12.f : 22.f);
             if (rect.getMaxX() < playerPos.x - 18.f || rect.getMinX() > playerPos.x + lookAhead) {
                 continue;
             }
 
             auto closeX = std::max(0.f, rect.getMinX() - playerRect.getMaxX());
-            auto verticalOverlap = rect.getMaxY() > playerRect.getMinY() - 24.f && rect.getMinY() < playerRect.getMaxY() + 40.f;
+            auto verticalOverlap = rect.getMaxY() > playerRect.getMinY() - 22.f && rect.getMinY() < playerRect.getMaxY() + 36.f;
             if (verticalOverlap) {
                 scan.obstacleAhead = true;
                 scan.closestX = std::min(scan.closestX, closeX);
@@ -276,19 +232,19 @@ namespace {
             auto centerY = rect.getMidY();
             if (centerY > playerPos.y + 16.f) {
                 scan.obstacleAbove = true;
-                targetY = std::min(targetY, rect.getMinY() - 72.f);
+                targetY = std::min(targetY, rect.getMinY() - 68.f);
                 scan.hasTargetY = true;
             } else if (centerY < playerPos.y - 16.f) {
                 scan.obstacleBelow = true;
-                targetY = std::max(targetY, rect.getMaxY() + 72.f);
+                targetY = std::max(targetY, rect.getMaxY() + 68.f);
                 scan.hasTargetY = true;
             } else {
                 scan.wallAhead = true;
-                targetY += player->m_isUpsideDown ? -82.f : 82.f;
+                targetY += player->m_isUpsideDown ? -76.f : 76.f;
                 scan.hasTargetY = true;
             }
 
-            if (verticalOverlap && rect.size.height > playerRect.size.height * 1.08f && closeX < 90.f) {
+            if (verticalOverlap && rect.size.height > playerRect.size.height * 1.10f && closeX < 80.f) {
                 scan.wallAhead = true;
             }
         }
@@ -313,8 +269,8 @@ namespace {
         });
     }
 
-    EmocCorridorSample findBestCorridor(PlayerObject* player, std::vector<CCRect> const& rects, float lookAhead) {
-        EmocCorridorSample best;
+    CorridorSample findBestCorridor(PlayerObject* player, std::vector<CCRect> const& rects, float lookAhead) {
+        CorridorSample best;
         if (!player) {
             return best;
         }
@@ -389,8 +345,8 @@ namespace {
         return std::clamp(velocity, -limit, limit);
     }
 
-    EmocTrajectoryCandidate simulateTrajectory(PlayerObject* player, PlayerMode mode, std::vector<CCRect> const& rects, bool hold, float targetY) {
-        EmocTrajectoryCandidate candidate;
+    TrajectoryCandidate simulateTrajectory(PlayerObject* player, PlayerMode mode, std::vector<CCRect> const& rects, bool hold, float targetY) {
+        TrajectoryCandidate candidate;
         candidate.hold = hold;
         if (!player) {
             return candidate;
@@ -456,7 +412,7 @@ namespace {
 
         auto grounded = player->m_isOnGround || player->m_lastGroundObject || player->m_objectSnappedTo;
         auto yVelocity = player->getYVelocity();
-        auto nearEnough = scan.closestX < (mode == PlayerMode::Robot ? 150.f : 120.f);
+        auto nearEnough = scan.closestX < (mode == PlayerMode::Robot ? 142.f : 112.f);
 
         if (mode == PlayerMode::Ball || mode == PlayerMode::Spider) {
             return grounded && nearEnough;
@@ -468,17 +424,16 @@ namespace {
     }
 
     bool shouldFlightHold(PlayLayer* layer, PlayerObject* player, PlayerMode mode) {
-        auto simulatedHold = chooseSimulatedFlightHold(layer, player, mode);
         auto scan = scanThreats(layer, player, mode);
         auto playerPos = player->getPosition();
         auto yVelocity = player->getYVelocity();
 
-        auto softTop = playerPos.y + 190.f;
-        auto softBottom = playerPos.y - 190.f;
+        auto softTop = playerPos.y + 170.f;
+        auto softBottom = playerPos.y - 170.f;
         if (layer && layer->m_objectLayer) {
             auto winSize = CCDirector::sharedDirector()->getWinSize();
-            softTop = layer->m_objectLayer->convertToNodeSpace({ 0.f, winSize.height - 48.f }).y;
-            softBottom = layer->m_objectLayer->convertToNodeSpace({ 0.f, 52.f }).y;
+            softTop = layer->m_objectLayer->convertToNodeSpace({ 0.f, winSize.height - 50.f }).y;
+            softBottom = layer->m_objectLayer->convertToNodeSpace({ 0.f, 54.f }).y;
         }
 
         if (playerPos.y < softBottom || scan.obstacleBelow || scan.wallAhead) {
@@ -487,13 +442,11 @@ namespace {
         if (playerPos.y > softTop || scan.obstacleAbove) {
             return player->m_isUpsideDown;
         }
-        if (scan.hasTargetY && std::abs(scan.targetY - playerPos.y) > 20.f) {
+        if (scan.hasTargetY && std::abs(scan.targetY - playerPos.y) > 18.f) {
             return (scan.targetY > playerPos.y) != player->m_isUpsideDown;
         }
-        if (std::abs(yVelocity) > 7.5) {
-            return player->m_isUpsideDown ? yVelocity > 0.0 : yVelocity < 0.0;
-        }
-        return simulatedHold;
+
+        return player->m_isUpsideDown ? yVelocity > 1.75 : yVelocity < -1.75;
     }
 
     bool shouldTapFlight(PlayLayer* layer, PlayerObject* player, PlayerMode mode, AutoInputState& input) {
@@ -504,64 +457,15 @@ namespace {
         return wantsLift && (urgent || input.tapCooldown == 0);
     }
 
-    CCDrawNode* getRayNode(PlayLayer* layer) {
-        if (!layer || !layer->m_objectLayer) {
-            return nullptr;
-        }
-
-        if (auto existing = typeinfo_cast<CCDrawNode*>(layer->m_objectLayer->getChildByTag(kRayNodeTag))) {
-            return existing;
-        }
-
-        auto node = CCDrawNode::create();
-        node->setTag(kRayNodeTag);
-        node->setZOrder(9999);
-        layer->m_objectLayer->addChild(node);
-        return node;
-    }
-
-
-    void clearRayDebug(PlayLayer* layer) {
-        auto rayNode = getRayNode(layer);
-        if (rayNode) {
-            rayNode->clear();
-        }
-    }
-
-    void updateRayDebug(PlayLayer* layer, PlayerObject* player, PlayerMode mode) {
-        auto rayNode = getRayNode(layer);
-        if (!rayNode) {
+    void runAutoForPlayer(PlayLayer* layer, PlayerObject* player, AutoInputState& input) {
+        if (!layer || !player || !layer->isGameplayActive()) {
+            releaseAutoInput(player, input);
             return;
         }
         rayNode->clear();
 
-        if (!g_visualRaysEnabled || !player || !layer || !layer->isGameplayActive()) {
-            return;
-        }
-
-        auto lookAhead = modeLookAhead(player, mode);
-        auto rects = collectDangerRects(layer, player, mode, lookAhead);
-        auto corridor = findBestCorridor(player, rects, lookAhead);
-        auto start = player->getPosition();
-        auto end = CCPoint { start.x + lookAhead, corridor.foundGap ? corridor.targetY : start.y };
-        rayNode->drawSegment(start, end, 1.5f, { 0.0f, 1.0f, 0.25f, 0.75f });
-
-        for (auto const& rect : rects) {
-            auto mid = CCPoint { rect.getMidX(), rect.getMidY() };
-            if (std::abs(mid.x - start.x) < lookAhead) {
-                rayNode->drawSegment(start, mid, 0.65f, { 1.0f, 0.15f, 0.05f, 0.35f });
-            }
-        }
-    }
-
-    void runAutoForPlayer(PlayLayer* layer, PlayerObject* player, AutoInputState& input) {
-        if (!layer || !player || !layer->isGameplayActive() || !g_autoPlayEnabled) {
-            releaseAutoInput(player, input);
-            return;
-        }
-
         auto mode = currentPlayerMode(player);
-        setRightHeld(player, input, g_holdRightEnabled);
+        setRightHeld(player, input, true);
 
         if (updateJumpTap(player, input)) {
             return;
@@ -582,7 +486,7 @@ namespace {
             return;
         }
 
-        if (isTapFlightMode(mode)) {
+        if (mode == PlayerMode::Ufo || mode == PlayerMode::Swing) {
             if (shouldTapFlight(layer, player, mode, input)) {
                 startJumpTap(player, input, 2, mode == PlayerMode::Ufo ? 10 : 8);
             } else {
@@ -595,195 +499,15 @@ namespace {
     }
 
     void runAutoPlay(PlayLayer* layer) {
-        if (!layer || !layer->isGameplayActive() || !g_autoPlayEnabled) {
+        if (!layer || !layer->isGameplayActive()) {
             releaseAllAutoInputs(layer);
-            clearRayDebug(layer);
             return;
         }
 
         runAutoForPlayer(layer, layer->m_player1, g_player1Input);
-        if (g_dualPlayerEnabled) {
-            runAutoForPlayer(layer, layer->m_player2, g_player2Input);
-        } else {
-            releaseAutoInput(layer->m_player2, g_player2Input);
-        }
-        updateRayDebug(layer, layer->m_player1, currentPlayerMode(layer->m_player1));
-    }
-
-    void applyToggleLabel(CCLabelBMFont* label, char const* name, bool enabled) {
-        if (!label) {
-            return;
-        }
-
-        char buffer[64];
-        std::snprintf(buffer, sizeof(buffer), "%s: %s", name, enabled ? "ON" : "OFF");
-        label->setString(buffer);
-        label->setColor(enabled ? ccColor3B { 100, 255, 125 } : ccColor3B { 255, 140, 140 });
-    }
-
-    CCLabelBMFont* addSmallLabel(CCNode* parent, char const* text, CCPoint position, float scale = 0.36f) {
-        auto label = CCLabelBMFont::create(text, "bigFont.fnt");
-        label->setScale(scale);
-        label->setPosition(position);
-        parent->addChild(label);
-        return label;
+        runAutoForPlayer(layer, layer->m_player2, g_player2Input);
     }
 }
-
-class EmocHubMenu : public CCLayer {
-protected:
-    bool m_open = false;
-    CCScale9Sprite* m_panel = nullptr;
-    CCLabelBMFont* m_autoLabel = nullptr;
-    CCLabelBMFont* m_rayLabel = nullptr;
-    CCLabelBMFont* m_rightLabel = nullptr;
-    CCLabelBMFont* m_dualLabel = nullptr;
-    CCLabelBMFont* m_statusLabel = nullptr;
-
-    bool init() override {
-        if (!CCLayer::init()) {
-            return false;
-        }
-
-        auto winSize = CCDirector::sharedDirector()->getWinSize();
-        auto menu = CCMenu::create();
-        menu->setPosition(CCPointZero);
-        this->addChild(menu, 5);
-
-        auto sprite = ButtonSprite::create("Emoc Hub", 92, true, "bigFont.fnt", "GJ_button_01.png", 26.f, 0.38f);
-        auto button = CCMenuItemSpriteExtra::create(sprite, this, menu_selector(EmocHubMenu::onOpenHub));
-        button->setPosition({ winSize.width - 58.f, winSize.height - 26.f });
-        button->setID("emoc-hub-open"_spr);
-        menu->addChild(button);
-
-        m_panel = CCScale9Sprite::create("square02_001.png");
-        m_panel->setContentSize({ 245.f, 172.f });
-        m_panel->setOpacity(205);
-        m_panel->setColor({ 20, 26, 38 });
-        m_panel->setPosition({ winSize.width - 145.f, winSize.height - 126.f });
-        m_panel->setVisible(false);
-        this->addChild(m_panel, 4);
-
-        addSmallLabel(m_panel, "Emoc Hub Auto", { 122.f, 150.f }, 0.48f)->setColor({ 135, 210, 255 });
-        addSmallLabel(m_panel, "Sim ray: hold / no-hold path chooser", { 122.f, 129.f }, 0.28f)->setColor({ 210, 225, 255 });
-
-        auto panelMenu = CCMenu::create();
-        panelMenu->setPosition(CCPointZero);
-        m_panel->addChild(panelMenu, 3);
-
-        m_autoLabel = this->addToggle(panelMenu, "Auto", { 64.f, 94.f }, menu_selector(EmocHubMenu::onToggleAuto), "auto-toggle"_spr);
-        m_rayLabel = this->addToggle(panelMenu, "Rays", { 181.f, 94.f }, menu_selector(EmocHubMenu::onToggleRays), "ray-toggle"_spr);
-        m_rightLabel = this->addToggle(panelMenu, "Hold Right", { 64.f, 48.f }, menu_selector(EmocHubMenu::onToggleRight), "right-toggle"_spr);
-        m_dualLabel = this->addToggle(panelMenu, "Dual", { 181.f, 48.f }, menu_selector(EmocHubMenu::onToggleDual), "dual-toggle"_spr);
-
-        m_statusLabel = addSmallLabel(m_panel, "Ready", { 122.f, 15.f }, 0.28f);
-        m_statusLabel->setColor({ 170, 240, 170 });
-        this->schedule(schedule_selector(EmocHubMenu::tickStatus), 0.15f);
-        this->syncLabels();
-        return true;
-    }
-
-    CCLabelBMFont* addToggle(CCMenu* menu, char const* text, CCPoint position, SEL_MenuHandler callback, char const* nodeID) {
-        auto sprite = ButtonSprite::create(text, 92, true, "bigFont.fnt", "GJ_button_05.png", 24.f, 0.34f);
-        auto button = CCMenuItemSpriteExtra::create(sprite, this, callback);
-        button->setPosition(position);
-        button->setID(nodeID);
-        menu->addChild(button);
-
-        auto label = CCLabelBMFont::create(text, "bigFont.fnt");
-        label->setScale(0.26f);
-        label->setPosition(position + CCPoint { 0.f, -21.f });
-        m_panel->addChild(label, 2);
-        return label;
-    }
-
-    void syncLabels() {
-        applyToggleLabel(m_autoLabel, "Auto", g_autoPlayEnabled);
-        applyToggleLabel(m_rayLabel, "Rays", g_visualRaysEnabled);
-        applyToggleLabel(m_rightLabel, "Right", g_holdRightEnabled);
-        applyToggleLabel(m_dualLabel, "Dual", g_dualPlayerEnabled);
-    }
-
-    void onOpenHub(CCObject*) {
-        m_open = !m_open;
-        if (m_panel) {
-            m_panel->setVisible(m_open);
-        }
-    }
-
-    void onToggleAuto(CCObject*) {
-        g_autoPlayEnabled = !g_autoPlayEnabled;
-        if (!g_autoPlayEnabled) {
-            releaseAllAutoInputs();
-        }
-        this->syncLabels();
-    }
-
-    void onToggleRays(CCObject*) {
-        g_visualRaysEnabled = !g_visualRaysEnabled;
-        if (!g_visualRaysEnabled) {
-            if (auto layer = PlayLayer::get()) {
-                clearRayDebug(layer);
-            }
-        }
-        this->syncLabels();
-    }
-
-    void onToggleRight(CCObject*) {
-        g_holdRightEnabled = !g_holdRightEnabled;
-        if (!g_holdRightEnabled) {
-            if (auto layer = PlayLayer::get()) {
-                setRightHeld(layer->m_player1, g_player1Input, false);
-                setRightHeld(layer->m_player2, g_player2Input, false);
-            }
-        }
-        this->syncLabels();
-    }
-
-    void onToggleDual(CCObject*) {
-        g_dualPlayerEnabled = !g_dualPlayerEnabled;
-        if (!g_dualPlayerEnabled) {
-            if (auto layer = PlayLayer::get()) {
-                releaseAutoInput(layer->m_player2, g_player2Input);
-            }
-        }
-        this->syncLabels();
-    }
-
-    void tickStatus(float) {
-        if (!m_statusLabel) {
-            return;
-        }
-
-        if (auto layer = PlayLayer::get()) {
-            auto mode = currentPlayerMode(layer->m_player1);
-            char buffer[96];
-            std::snprintf(
-                buffer,
-                sizeof(buffer),
-                "%s | %.2f%% | %s",
-                g_autoPlayEnabled ? "Auto active" : "Auto off",
-                layer->getCurrentPercent(),
-                modeName(mode)
-            );
-            m_statusLabel->setString(buffer);
-        } else {
-            m_statusLabel->setString("Waiting for level");
-        }
-        this->syncLabels();
-    }
-
-public:
-    static EmocHubMenu* create() {
-        auto ret = new EmocHubMenu();
-        if (ret && ret->init()) {
-            ret->autorelease();
-            return ret;
-        }
-        delete ret;
-        return nullptr;
-    }
-};
 
 class $modify(AutoPlayOnlyLayer, PlayLayer) {
     bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
@@ -792,9 +516,6 @@ class $modify(AutoPlayOnlyLayer, PlayLayer) {
         }
 
         releaseAllAutoInputs(this);
-        if (auto menu = EmocHubMenu::create()) {
-            this->addChild(menu, 9999);
-        }
         return true;
     }
 
