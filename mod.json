@@ -5,10 +5,10 @@
         "android": "*"
     },
     "id": "emir.hub",
-    "name": "Emir Hub",
-    "version": "1.3.0",
+    "name": "Emoc Hub",
+    "version": "1.4.0",
     "developers": [
         "Emir"
     ],
-    "description": "Mega-Hack tarzinda all-in-one Geode oyun ici hub: auto play, tum oyun modlari icin ground/air assist, hitbox, speed ve visual utility araclari."
+    "description": "Ray ve hold/no-hold simülasyonu kullanan, oyun içinde Emoc Hub GUI üzerinden açılıp kapatılabilen auto play modu."
 }
