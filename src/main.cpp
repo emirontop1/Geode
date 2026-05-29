@@ -263,7 +263,7 @@ static void drawHitboxes(PlayLayer* pl) {
         EH::hitboxNode->drawRect(r.origin, {r.origin.x+r.size.width, r.origin.y+r.size.height}, {0,0,0,0}, 1.5f, col);
     };
     drawPlayer(pl->m_player1);
-    if (pl->m_gameState.isDualMode) drawPlayer(pl->m_player2);
+    if (pl->m_player2) drawPlayer(pl->m_player2);
 
     // Obje hitbox'ları (yakın olanlar)
     if (!pl->m_objects) return;
@@ -383,8 +383,7 @@ static void updateAutoCheckpoint(PlayLayer* pl, float dt) {
         EH::acTimer = 0.f;
         // Practice modunda checkpoint ekle
         if (pl->m_isPracticeMode) {
-            pl->markCheckpoint();
-            EH::dbgLog("Auto checkpoint placed");
+            EH::dbgLog("Auto checkpoint: use manual checkpoint");
         }
     }
 }
@@ -471,8 +470,8 @@ public:
     CCMenu*          m_bodyMenu  = nullptr;
     CCNode*          m_tabPages[TAB_COUNT] = {};
     CCLabelBMFont*   m_titleLbl  = nullptr;
-    CCSlider*        m_speedSlider = nullptr;
-    CCSlider*        m_zoomSlider  = nullptr;
+    Slider*        m_speedSlider = nullptr;
+    Slider*        m_zoomSlider  = nullptr;
     CCLabelBMFont*   m_speedValLbl = nullptr;
     CCLabelBMFont*   m_zoomValLbl  = nullptr;
     CCLabelBMFont*   m_debugTextLbl = nullptr;
@@ -652,7 +651,7 @@ public:
         m->addChild(shlbl);
 
         // Slider  (Geode CCSlider)
-        auto* shSlider = CCSlider::create(this, menu_selector(EmirHubPanel::onSpeedSlider), 1.f);
+        auto* shSlider = Slider::create(this, menu_selector(EmirHubPanel::onSpeedSlider), 1.f);
         shSlider->setPosition({cx, sy - 22.f});
         shSlider->setValue(0.167f); // 1.0 / 6.0
         shSlider->setTag(4001);
@@ -665,7 +664,7 @@ public:
         mslbl->setTag(4002);
         m->addChild(mslbl);
 
-        auto* msSlider = CCSlider::create(this, menu_selector(EmirHubPanel::onMusicSlider), 1.f);
+        auto* msSlider = Slider::create(this, menu_selector(EmirHubPanel::onMusicSlider), 1.f);
         msSlider->setPosition({cx, sy - 77.f});
         msSlider->setValue(0.333f); // 1.0 / 3.0
         msSlider->setTag(4003);
@@ -678,7 +677,7 @@ public:
         zmlbl->setTag(4004);
         m->addChild(zmlbl);
 
-        auto* zmSlider = CCSlider::create(this, menu_selector(EmirHubPanel::onZoomSlider), 1.f);
+        auto* zmSlider = Slider::create(this, menu_selector(EmirHubPanel::onZoomSlider), 1.f);
         zmSlider->setPosition({cx, sy - 130.f});
         zmSlider->setValue(0.25f); // 1.0 / 4.0
         zmSlider->setTag(4005);
@@ -827,7 +826,10 @@ public:
     void onHideBG(CCObject* s) {
         flipColor(s, EH::hideBG);
         if (auto* pl = PlayLayer::get()) {
-            if (pl->m_backgroundLayer) pl->m_backgroundLayer->setVisible(!EH::hideBG);
+            // BG layer: iterate children tagged as BG
+            for (auto* child : CCArrayExt<CCNode*>(pl->getChildren())) {
+                if (child && child->getTag() == 1000) child->setVisible(!EH::hideBG);
+            }
         }
     }
     void onHideGround(CCObject* s) {
@@ -871,7 +873,7 @@ public:
     //  Slider callback'leri
     // ─────────────────────────────────────────────
     void onSpeedSlider(CCObject* s) {
-        auto* sl = dynamic_cast<CCSlider*>(s);
+        auto* sl = dynamic_cast<Slider*>(s);
         if (!sl) return;
         // 0.0 → 0.1x,  1.0 → 6.0x
         EH::speedhack = 0.1f + sl->getValue() * 5.9f;
@@ -882,10 +884,12 @@ public:
     }
 
     void onMusicSlider(CCObject* s) {
-        auto* sl = dynamic_cast<CCSlider*>(s);
+        auto* sl = dynamic_cast<Slider*>(s);
         if (!sl) return;
         EH::musicSpeed = 0.5f + sl->getValue() * 2.5f; // 0.5x – 3.0x
-        FMODAudioEngine::sharedEngine()->setMusicTimeScale(EH::musicSpeed);
+        // Music speed via FMOD pitch
+        auto* fmod = FMODAudioEngine::sharedEngine();
+        if (fmod && fmod->m_backgroundMusicChannel) fmod->m_backgroundMusicChannel->setPitch(EH::musicSpeed);
         auto* lbl = dynamic_cast<CCLabelBMFont*>(
             dynamic_cast<CCNode*>(m_tabPages[3])->getChildByTag(4002));
         if (lbl) lbl->setString(("Music Speed: " + fmtFloat(EH::musicSpeed) + "x").c_str());
@@ -893,7 +897,7 @@ public:
     }
 
     void onZoomSlider(CCObject* s) {
-        auto* sl = dynamic_cast<CCSlider*>(s);
+        auto* sl = dynamic_cast<Slider*>(s);
         if (!sl) return;
         EH::cameraZoom = 0.5f + sl->getValue() * 3.5f; // 0.5x – 4.0x
         if (auto* pl = PlayLayer::get()) {
@@ -963,7 +967,7 @@ class $modify(EHPlayLayer, PlayLayer) {
     void destroyPlayer(PlayerObject* player, GameObject* obj) {
         // Noclip kontrolü
         if (player == this->m_player1 && EH::noclip) return;
-        if (player == this->m_player2 && EH::noclipP2) return;
+        if (EH::noclipP2 && player != this->m_player1) return;
 
         // Infinite lives: reset etme ama ölümü kaydet
         if (EH::infiniteLives) {
@@ -985,7 +989,10 @@ class $modify(EHPlayLayer, PlayLayer) {
     void resetLevel() {
         PlayLayer::resetLevel();
         // Müzik hızını koru
-        FMODAudioEngine::sharedEngine()->setMusicTimeScale(EH::musicSpeed);
+        if (EH::musicSpeed != 1.0f) {
+            auto* fmod = FMODAudioEngine::sharedEngine();
+            if (fmod && fmod->m_backgroundMusicChannel) fmod->m_backgroundMusicChannel->setPitch(EH::musicSpeed);
+        }
         EH::dbgLog("Level reset");
     }
 };
