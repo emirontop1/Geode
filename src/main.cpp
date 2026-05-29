@@ -8,7 +8,10 @@ using namespace cocos2d;
 namespace {
     bool g_noclip = false;
     bool g_autoPlay = false;
+    bool g_showHitbox = false;
     bool g_menuOpen = false;
+
+    DrawNode* g_drawNode = nullptr;
 }
 
 void toast(const char* txt) {
@@ -18,81 +21,219 @@ void toast(const char* txt) {
     )->show();
 }
 
-bool shouldJump(PlayerObject* player) {
+/*
+    HITBOX DRAW
+*/
+
+void drawRect(
+    DrawNode* node,
+    CCRect rect,
+    ccColor4F color
+) {
+    CCPoint verts[4] = {
+        {rect.getMinX(), rect.getMinY()},
+        {rect.getMaxX(), rect.getMinY()},
+        {rect.getMaxX(), rect.getMaxY()},
+        {rect.getMinX(), rect.getMaxY()}
+    };
+
+    node->drawPoly(
+        verts,
+        4,
+        true,
+        color
+    );
+}
+
+/*
+    FUTURE SIMULATION
+*/
+
+bool willHitSpike(
+    PlayerObject* player,
+    bool jump
+) {
     if (!player)
         return false;
 
     /*
-        Basit mantık:
-        yere değince zıpla.
-        cube / robot / spider için çalışır.
+        fake future prediction
     */
 
-    if (
-        player->m_isOnGround &&
-        player->getYVelocity() <= 0.f
-    ) {
-        return true;
+    float futureX =
+        player->getPositionX() + 70.f;
+
+    float futureY =
+        player->getPositionY();
+
+    if (jump) {
+        futureY += 90.f;
+    }
+
+    auto objs =
+        PlayLayer::get()->m_objects;
+
+    for (auto obj : CCArrayExt<GameObject*>(objs)) {
+
+        if (!obj)
+            continue;
+
+        /*
+            spike/object detection
+        */
+
+        auto dist =
+            fabs(obj->getPositionX() - futureX);
+
+        if (dist > 80.f)
+            continue;
+
+        auto rect = CCRect(
+            obj->getPositionX() - 20.f,
+            obj->getPositionY() - 20.f,
+            40.f,
+            40.f
+        );
+
+        if (rect.containsPoint({
+            futureX,
+            futureY
+        })) {
+            return true;
+        }
     }
 
     return false;
 }
 
-void runAutoPlay(PlayLayer* pl) {
+/*
+    SMART AUTOPLAY
+*/
+
+void runSmartAutoPlay(
+    PlayLayer* pl
+) {
     if (!g_autoPlay)
         return;
 
     if (!pl)
         return;
 
-    auto player = pl->m_player1;
+    auto player =
+        pl->m_player1;
 
     if (!player)
         return;
 
+    bool noJumpDead =
+        willHitSpike(player, false);
+
+    bool jumpDead =
+        willHitSpike(player, true);
+
     /*
-        Ship auto fly
+        VISUAL LINES
     */
 
-    if (player->m_isShip) {
+    if (g_drawNode) {
+        g_drawNode->clear();
 
-        if (player->getPositionY() < 120.f) {
-            player->pushButton(PlayerButton::Jump);
-        }
-        else {
-            player->releaseButton(PlayerButton::Jump);
-        }
+        auto pos =
+            player->getPosition();
 
-        return;
+        /*
+            no jump line
+        */
+
+        g_drawNode->drawLine(
+            pos,
+            {
+                pos.x + 70.f,
+                pos.y
+            },
+            noJumpDead ?
+            ccc4f(1,0,0,1) :
+            ccc4f(0,1,0,1)
+        );
+
+        /*
+            jump line
+        */
+
+        g_drawNode->drawLine(
+            pos,
+            {
+                pos.x + 70.f,
+                pos.y + 90.f
+            },
+            jumpDead ?
+            ccc4f(1,0,0,1) :
+            ccc4f(0,1,0,1)
+        );
     }
 
     /*
-        Wave auto
+        DECISION SYSTEM
     */
 
-    if (player->m_isDart) {
-
-        if (player->getYVelocity() < -2.f) {
-            player->pushButton(PlayerButton::Jump);
-        }
-        else {
-            player->releaseButton(PlayerButton::Jump);
-        }
-
-        return;
-    }
-
-    /*
-        Cube auto
-    */
-
-    if (shouldJump(player)) {
-        player->pushButton(PlayerButton::Jump);
+    if (
+        noJumpDead &&
+        !jumpDead
+    ) {
+        player->pushButton(
+            PlayerButton::Jump
+        );
     }
     else {
-        player->releaseButton(PlayerButton::Jump);
+        player->releaseButton(
+            PlayerButton::Jump
+        );
     }
 }
+
+/*
+    HITBOXES
+*/
+
+void renderHitboxes(
+    PlayLayer* pl
+) {
+    if (!g_showHitbox)
+        return;
+
+    if (!pl)
+        return;
+
+    if (!g_drawNode)
+        return;
+
+    auto objs =
+        pl->m_objects;
+
+    for (auto obj :
+        CCArrayExt<GameObject*>(objs)) {
+
+        if (!obj)
+            continue;
+
+        auto rect = CCRect(
+            obj->getPositionX() - 15.f,
+            obj->getPositionY() - 15.f,
+            30.f,
+            30.f
+        );
+
+        drawRect(
+            g_drawNode,
+            rect,
+            ccc4f(1,0,0,1)
+        );
+    }
+}
+
+/*
+    MENU
+*/
 
 class EmirMenu : public CCLayer {
 public:
@@ -102,7 +243,10 @@ public:
     static EmirMenu* create() {
         auto ret = new EmirMenu();
 
-        if (ret && ret->init()) {
+        if (
+            ret &&
+            ret->init()
+        ) {
             ret->autorelease();
             return ret;
         }
@@ -115,171 +259,238 @@ public:
         if (!CCLayer::init())
             return false;
 
-        auto win = CCDirector::sharedDirector()->getWinSize();
-
-        /*
-            DOKUNMATİK BOZULMASIN DİYE FALSE
-        */
+        auto win =
+            CCDirector::sharedDirector()
+            ->getWinSize();
 
         this->setTouchEnabled(false);
 
+        /*
+            BG
+        */
+
         m_bg = CCLayerColor::create(
-            {0, 0, 0, 120},
+            {0,0,0,120},
             260.f,
-            220.f
+            260.f
         );
 
         m_bg->setPosition({
-            win.width / 2 - 130.f,
-            win.height / 2 - 110.f
+            win.width/2 - 130.f,
+            win.height/2 - 130.f
         });
 
         m_bg->setVisible(false);
 
-        this->addChild(m_bg, 100);
-
-        m_menu = CCMenu::create();
-        m_menu->setPosition(0, 0);
-
-        this->addChild(m_menu, 101);
+        this->addChild(
+            m_bg,
+            100
+        );
 
         /*
-            OPEN BUTTON
+            MENU
         */
 
-        auto openBtn = CCMenuItemSpriteExtra::create(
-            ButtonSprite::create(
-                "EH",
-                80,
-                true,
-                "goldFont.fnt",
-                "GJ_button_04.png",
-                30.f,
-                1.f
-            ),
-            this,
-            menu_selector(EmirMenu::onOpen)
+        m_menu = CCMenu::create();
+        m_menu->setPosition(0,0);
+
+        this->addChild(
+            m_menu,
+            101
         );
+
+        /*
+            OPEN
+        */
+
+        auto openBtn =
+            CCMenuItemSpriteExtra::create(
+                ButtonSprite::create(
+                    "EH",
+                    80,
+                    true,
+                    "goldFont.fnt",
+                    "GJ_button_04.png",
+                    30.f,
+                    1.f
+                ),
+                this,
+                menu_selector(
+                    EmirMenu::onOpen
+                )
+            );
 
         openBtn->setPosition({
             60.f,
-            win.height / 2
+            win.height/2
         });
 
         m_menu->addChild(openBtn);
 
         /*
-            NOCLIP
-        */
-
-        auto noclipBtn = CCMenuItemSpriteExtra::create(
-            ButtonSprite::create(
-                "Noclip",
-                120,
-                true,
-                "goldFont.fnt",
-                "GJ_button_01.png",
-                25.f,
-                0.8f
-            ),
-            this,
-            menu_selector(EmirMenu::onNoclip)
-        );
-
-        noclipBtn->setPosition({
-            win.width / 2,
-            win.height / 2 + 50.f
-        });
-
-        m_menu->addChild(noclipBtn);
-
-        /*
             AUTOPLAY
         */
 
-        auto autoBtn = CCMenuItemSpriteExtra::create(
-            ButtonSprite::create(
-                "Auto Play",
-                120,
-                true,
-                "goldFont.fnt",
-                "GJ_button_05.png",
-                25.f,
-                0.8f
-            ),
-            this,
-            menu_selector(EmirMenu::onAutoPlay)
-        );
+        auto autoBtn =
+            CCMenuItemSpriteExtra::create(
+                ButtonSprite::create(
+                    "Smart Auto",
+                    140,
+                    true,
+                    "goldFont.fnt",
+                    "GJ_button_05.png",
+                    25.f,
+                    0.8f
+                ),
+                this,
+                menu_selector(
+                    EmirMenu::onAutoPlay
+                )
+            );
 
         autoBtn->setPosition({
-            win.width / 2,
-            win.height / 2
+            win.width/2,
+            win.height/2 + 50.f
         });
 
         m_menu->addChild(autoBtn);
 
         /*
+            NOCLIP
+        */
+
+        auto noclipBtn =
+            CCMenuItemSpriteExtra::create(
+                ButtonSprite::create(
+                    "Noclip",
+                    140,
+                    true,
+                    "goldFont.fnt",
+                    "GJ_button_01.png",
+                    25.f,
+                    0.8f
+                ),
+                this,
+                menu_selector(
+                    EmirMenu::onNoclip
+                )
+            );
+
+        noclipBtn->setPosition({
+            win.width/2,
+            win.height/2
+        });
+
+        m_menu->addChild(noclipBtn);
+
+        /*
+            HITBOX
+        */
+
+        auto hitboxBtn =
+            CCMenuItemSpriteExtra::create(
+                ButtonSprite::create(
+                    "Show Hitboxes",
+                    170,
+                    true,
+                    "goldFont.fnt",
+                    "GJ_button_02.png",
+                    25.f,
+                    0.7f
+                ),
+                this,
+                menu_selector(
+                    EmirMenu::onHitbox
+                )
+            );
+
+        hitboxBtn->setPosition({
+            win.width/2,
+            win.height/2 - 50.f
+        });
+
+        m_menu->addChild(hitboxBtn);
+
+        /*
             CLOSE
         */
 
-        auto closeBtn = CCMenuItemSpriteExtra::create(
-            ButtonSprite::create(
-                "Close",
-                120,
-                true,
-                "goldFont.fnt",
-                "GJ_button_06.png",
-                25.f,
-                0.8f
-            ),
-            this,
-            menu_selector(EmirMenu::onOpen)
-        );
+        auto closeBtn =
+            CCMenuItemSpriteExtra::create(
+                ButtonSprite::create(
+                    "Close",
+                    140,
+                    true,
+                    "goldFont.fnt",
+                    "GJ_button_06.png",
+                    25.f,
+                    0.8f
+                ),
+                this,
+                menu_selector(
+                    EmirMenu::onOpen
+                )
+            );
 
         closeBtn->setPosition({
-            win.width / 2,
-            win.height / 2 - 50.f
+            win.width/2,
+            win.height/2 - 100.f
         });
 
         m_menu->addChild(closeBtn);
 
-        noclipBtn->setVisible(false);
         autoBtn->setVisible(false);
+        noclipBtn->setVisible(false);
+        hitboxBtn->setVisible(false);
         closeBtn->setVisible(false);
 
-        noclipBtn->setTag(1000);
-        autoBtn->setTag(1001);
-        closeBtn->setTag(1002);
+        autoBtn->setTag(1);
+        noclipBtn->setTag(2);
+        hitboxBtn->setTag(3);
+        closeBtn->setTag(4);
 
         return true;
     }
 
     void updateGUI() {
-        auto noclipBtn = m_menu->getChildByTag(1000);
-        auto autoBtn = m_menu->getChildByTag(1001);
-        auto closeBtn = m_menu->getChildByTag(1002);
+        for (int i = 1; i <= 4; i++) {
 
-        if (noclipBtn)
-            noclipBtn->setVisible(g_menuOpen);
+            auto obj =
+                m_menu->getChildByTag(i);
 
-        if (autoBtn)
-            autoBtn->setVisible(g_menuOpen);
-
-        if (closeBtn)
-            closeBtn->setVisible(g_menuOpen);
+            if (obj)
+                obj->setVisible(
+                    g_menuOpen
+                );
+        }
 
         if (m_bg)
-            m_bg->setVisible(g_menuOpen);
+            m_bg->setVisible(
+                g_menuOpen
+            );
     }
 
     void onOpen(CCObject*) {
-        g_menuOpen = !g_menuOpen;
+        g_menuOpen =
+            !g_menuOpen;
 
         updateGUI();
     }
 
+    void onAutoPlay(CCObject*) {
+        g_autoPlay =
+            !g_autoPlay;
+
+        toast(
+            g_autoPlay ?
+            "Smart Auto Enabled" :
+            "Smart Auto Disabled"
+        );
+    }
+
     void onNoclip(CCObject*) {
-        g_noclip = !g_noclip;
+        g_noclip =
+            !g_noclip;
 
         toast(
             g_noclip ?
@@ -288,36 +499,59 @@ public:
         );
     }
 
-    void onAutoPlay(CCObject*) {
-        g_autoPlay = !g_autoPlay;
+    void onHitbox(CCObject*) {
+        g_showHitbox =
+            !g_showHitbox;
 
         toast(
-            g_autoPlay ?
-            "AutoPlay Enabled" :
-            "AutoPlay Disabled"
+            g_showHitbox ?
+            "Hitboxes Enabled" :
+            "Hitboxes Disabled"
         );
     }
 };
 
+/*
+    PLAYLAYER
+*/
+
 class $modify(MyPlayLayer, PlayLayer) {
+
     bool init(
         GJGameLevel* level,
         bool useReplay,
         bool dontCreateObjects
     ) {
-        if (!PlayLayer::init(
-            level,
-            useReplay,
-            dontCreateObjects
-        )) {
+
+        if (
+            !PlayLayer::init(
+                level,
+                useReplay,
+                dontCreateObjects
+            )
+        ) {
             return false;
         }
 
-        auto menu = EmirMenu::create();
+        auto menu =
+            EmirMenu::create();
 
-        this->addChild(menu, 99999);
+        this->addChild(
+            menu,
+            99999
+        );
 
-        toast("Emir Hub Loaded");
+        g_drawNode =
+            DrawNode::create();
+
+        this->addChild(
+            g_drawNode,
+            99998
+        );
+
+        toast(
+            "Emir Smart Hub Loaded"
+        );
 
         return true;
     }
@@ -325,13 +559,19 @@ class $modify(MyPlayLayer, PlayLayer) {
     void update(float dt) {
         PlayLayer::update(dt);
 
-        runAutoPlay(this);
+        if (g_drawNode)
+            g_drawNode->clear();
+
+        runSmartAutoPlay(this);
+
+        renderHitboxes(this);
     }
 
     void destroyPlayer(
         PlayerObject* player,
         GameObject* obj
     ) {
+
         if (g_noclip)
             return;
 
@@ -343,6 +583,7 @@ class $modify(MyPlayLayer, PlayLayer) {
 };
 
 $on_mod(Loaded) {
-    log::info("Emir Hub Loaded");
+    log::info(
+        "Emir Smart Hub Loaded"
+    );
 }
-
