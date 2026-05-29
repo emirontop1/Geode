@@ -1,0 +1,14 @@
+{
+    "geode": "5.7.1",
+    "gd": {
+        "win": "*",
+        "android": "*"
+    },
+    "id": "emir.hub",
+    "name": "Emir Hub",
+    "version": "1.3.0",
+    "developers": [
+        "Emir"
+    ],
+    "description": "Mega-Hack tarzinda all-in-one Geode oyun ici hub: auto play, tum oyun modlari icin ground/air assist, hitbox, speed ve visual utility araclari."
+}
