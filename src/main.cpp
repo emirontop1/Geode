@@ -2,142 +2,26 @@
 #include <Geode/modify/PlayLayer.hpp>
 #include <Geode/ui/Notification.hpp>
 
-#include <array>
-#include <algorithm>
-#include <cmath>
-
 using namespace geode::prelude;
 using namespace cocos2d;
 
 namespace {
     bool g_noclip = false;
-    bool g_autoPlay = false;
-    bool g_showHitbox = false;
-    bool g_hidePlayer = false;
-    bool g_platformer = false;
+    bool g_menuOpen = false;
+}
 
-    bool g_holdJump = false;
-    bool g_holdRight = false;
-
-    int g_speedIndex = 2;
-
-    constexpr std::array<float, 5> kSpeeds = {
-        0.5f,
-        0.75f,
-        1.0f,
-        1.5f,
-        2.0f
-    };
-
-    float getSpeed() {
-        return kSpeeds.at(
-            std::clamp(g_speedIndex, 0, (int)kSpeeds.size() - 1)
-        );
-    }
-
-    void toast(char const* text) {
-        Notification::create(
-            text,
-            NotificationIcon::Info
-        )->show();
-    }
-
-    void holdJump(PlayerObject* player, bool hold) {
-        if (!player) return;
-
-        if (hold == g_holdJump)
-            return;
-
-        if (hold) {
-            player->pushButton(PlayerButton::Jump);
-        }
-        else {
-            player->releaseButton(PlayerButton::Jump);
-        }
-
-        g_holdJump = hold;
-    }
-
-    void holdRight(PlayerObject* player, bool hold) {
-        if (!player) return;
-
-        if (hold == g_holdRight)
-            return;
-
-        if (hold) {
-            player->pushButton(PlayerButton::Right);
-        }
-        else {
-            player->releaseButton(PlayerButton::Right);
-        }
-
-        g_holdRight = hold;
-    }
-
-    bool shouldJump(PlayerObject* player) {
-        if (!player)
-            return false;
-
-        auto yVel = player->getYVelocity();
-
-        if (player->m_isOnGround && yVel <= 0.f)
-            return true;
-
-        return false;
-    }
-
-    void autoPlay(PlayLayer* pl) {
-        if (!pl)
-            return;
-
-        auto player = pl->m_player1;
-
-        if (!player)
-            return;
-
-        if (!g_autoPlay) {
-            holdJump(player, false);
-            holdRight(player, false);
-            return;
-        }
-
-        if (g_platformer) {
-            holdRight(player, true);
-        }
-
-        holdJump(player, shouldJump(player));
-    }
-
-    void applyVisuals(PlayLayer* pl) {
-        if (!pl)
-            return;
-
-        pl->toggleIgnoreDamage(g_noclip);
-
-        pl->updateTimeMod(
-            getSpeed(),
-            true,
-            true
-        );
-
-        pl->togglePlayerVisibility(
-            !g_hidePlayer
-        );
-
-        if (g_showHitbox) {
-            pl->toggleDebugDraw();
-        }
-    }
+void toast(const char* txt) {
+    Notification::create(
+        txt,
+        NotificationIcon::Info
+    )->show();
 }
 
 class EmirMenu : public CCLayer {
-protected:
-    CCLayerColor* m_bg = nullptr;
-    CCMenu* m_menu = nullptr;
-
-    bool m_open = false;
-
 public:
+    CCMenu* m_menu = nullptr;
+    CCLayerColor* m_bg = nullptr;
+
     static EmirMenu* create() {
         auto ret = new EmirMenu();
 
@@ -146,7 +30,7 @@ public:
             return ret;
         }
 
-        delete ret;
+        CC_SAFE_DELETE(ret);
         return nullptr;
     }
 
@@ -154,129 +38,55 @@ public:
         if (!CCLayer::init())
             return false;
 
-        this->setTouchEnabled(true);
-        this->setKeypadEnabled(true);
-
         auto win = CCDirector::sharedDirector()->getWinSize();
 
-        auto openSpr = ButtonSprite::create(
-            "EH",
-            80,
-            true,
-            "goldFont.fnt",
-            "GJ_button_04.png",
-            30.f,
-            1.f
-        );
-
-        auto openBtn = CCMenuItemSpriteExtra::create(
-            openSpr,
-            this,
-            menu_selector(EmirMenu::onOpen)
-        );
-
-        m_menu = CCMenu::create();
-        m_menu->addChild(openBtn);
-
-        m_menu->setPosition(
-            {60.f, win.height / 2}
-        );
-
-        this->addChild(m_menu, 100);
+        this->setTouchEnabled(false);
 
         m_bg = CCLayerColor::create(
-            {0, 0, 0, 150},
-            320.f,
-            260.f
+            {0, 0, 0, 120},
+            260.f,
+            180.f
         );
 
         m_bg->setPosition({
-            win.width / 2 - 160.f,
-            win.height / 2 - 130.f
+            win.width / 2 - 130.f,
+            win.height / 2 - 90.f
         });
 
         m_bg->setVisible(false);
 
-        this->addChild(m_bg, 99);
+        this->addChild(m_bg, 100);
 
-        createButtons();
+        m_menu = CCMenu::create();
+        m_menu->setPosition(0, 0);
 
-        return true;
-    }
+        this->addChild(m_menu, 101);
 
-    void createButtons() {
-        auto menu = CCMenu::create();
-        menu->setPosition(0, 0);
-
-        m_bg->addChild(menu);
-
-        createToggle(
-            menu,
-            "Noclip",
-            {160.f, 220.f},
-            menu_selector(EmirMenu::onNoclip)
-        );
-
-        createToggle(
-            menu,
-            "Autoplay",
-            {160.f, 180.f},
-            menu_selector(EmirMenu::onAutoPlay)
-        );
-
-        createToggle(
-            menu,
-            "Hitbox",
-            {160.f, 140.f},
-            menu_selector(EmirMenu::onHitbox)
-        );
-
-        createToggle(
-            menu,
-            "Hide Player",
-            {160.f, 100.f},
-            menu_selector(EmirMenu::onHidePlayer)
-        );
-
-        createToggle(
-            menu,
-            "Platformer",
-            {160.f, 60.f},
-            menu_selector(EmirMenu::onPlatformer)
-        );
-
-        auto speedBtn = CCMenuItemSpriteExtra::create(
+        auto openBtn = CCMenuItemSpriteExtra::create(
             ButtonSprite::create(
-                "Speed",
-                100,
+                "EH",
+                80,
                 true,
                 "goldFont.fnt",
-                "GJ_button_05.png",
-                25.f,
+                "GJ_button_04.png",
+                30.f,
                 1.f
             ),
             this,
-            menu_selector(EmirMenu::onSpeed)
+            menu_selector(EmirMenu::onOpen)
         );
 
-        speedBtn->setPosition({
-            160.f,
-            20.f
+        openBtn->setPosition({
+            60.f,
+            win.height / 2
         });
 
-        menu->addChild(speedBtn);
-    }
+        m_menu->addChild(openBtn);
 
-    void createToggle(
-        CCMenu* menu,
-        char const* text,
-        CCPoint pos,
-        SEL_MenuHandler cb
-    ) {
-        auto btn = CCMenuItemSpriteExtra::create(
+        auto noclipBtn = CCMenuItemSpriteExtra::create(
             ButtonSprite::create(
-                text,
-                140,
+                "Noclip",
+                120,
                 true,
                 "goldFont.fnt",
                 "GJ_button_01.png",
@@ -284,18 +94,64 @@ public:
                 0.8f
             ),
             this,
-            cb
+            menu_selector(EmirMenu::onNoclip)
         );
 
-        btn->setPosition(pos);
+        noclipBtn->setPosition({
+            win.width / 2,
+            win.height / 2 + 40.f
+        });
 
-        menu->addChild(btn);
+        m_menu->addChild(noclipBtn);
+
+        auto closeBtn = CCMenuItemSpriteExtra::create(
+            ButtonSprite::create(
+                "Close",
+                120,
+                true,
+                "goldFont.fnt",
+                "GJ_button_06.png",
+                25.f,
+                0.8f
+            ),
+            this,
+            menu_selector(EmirMenu::onOpen)
+        );
+
+        closeBtn->setPosition({
+            win.width / 2,
+            win.height / 2 - 20.f
+        });
+
+        m_menu->addChild(closeBtn);
+
+        noclipBtn->setVisible(false);
+        closeBtn->setVisible(false);
+
+        noclipBtn->setTag(1000);
+        closeBtn->setTag(1001);
+
+        return true;
+    }
+
+    void updateGUI() {
+        auto noclipBtn = m_menu->getChildByTag(1000);
+        auto closeBtn = m_menu->getChildByTag(1001);
+
+        if (noclipBtn)
+            noclipBtn->setVisible(g_menuOpen);
+
+        if (closeBtn)
+            closeBtn->setVisible(g_menuOpen);
+
+        if (m_bg)
+            m_bg->setVisible(g_menuOpen);
     }
 
     void onOpen(CCObject*) {
-        m_open = !m_open;
+        g_menuOpen = !g_menuOpen;
 
-        m_bg->setVisible(m_open);
+        updateGUI();
     }
 
     void onNoclip(CCObject*) {
@@ -306,73 +162,6 @@ public:
             "Noclip Enabled" :
             "Noclip Disabled"
         );
-    }
-
-    void onAutoPlay(CCObject*) {
-        g_autoPlay = !g_autoPlay;
-
-        toast(
-            g_autoPlay ?
-            "Autoplay Enabled" :
-            "Autoplay Disabled"
-        );
-    }
-
-    void onHitbox(CCObject*) {
-        g_showHitbox = !g_showHitbox;
-
-        toast(
-            g_showHitbox ?
-            "Hitbox Enabled" :
-            "Hitbox Disabled"
-        );
-    }
-
-    void onHidePlayer(CCObject*) {
-        g_hidePlayer = !g_hidePlayer;
-
-        toast(
-            g_hidePlayer ?
-            "Player Hidden" :
-            "Player Visible"
-        );
-    }
-
-    void onPlatformer(CCObject*) {
-        g_platformer = !g_platformer;
-
-        toast(
-            g_platformer ?
-            "Platformer Assist Enabled" :
-            "Platformer Assist Disabled"
-        );
-    }
-
-    void onSpeed(CCObject*) {
-        g_speedIndex++;
-
-        if (g_speedIndex >= (int)kSpeeds.size())
-            g_speedIndex = 0;
-
-        char buf[64];
-
-        sprintf(
-            buf,
-            "Speed %.2fx",
-            getSpeed()
-        );
-
-        toast(buf);
-    }
-
-    void registerWithTouchDispatcher() override {
-        CCDirector::sharedDirector()
-            ->getTouchDispatcher()
-            ->addTargetedDelegate(
-                this,
-                -999,
-                true
-            );
     }
 };
 
@@ -399,28 +188,22 @@ class $modify(MyPlayLayer, PlayLayer) {
         return true;
     }
 
-    void update(float dt) {
-        PlayLayer::update(dt);
-
-        applyVisuals(this);
-
-        autoPlay(this);
-    }
-
     void destroyPlayer(
         PlayerObject* player,
-        GameObject* object
+        GameObject* obj
     ) {
         if (g_noclip)
             return;
 
         PlayLayer::destroyPlayer(
             player,
-            object
+            obj
         );
     }
 };
 
 $on_mod(Loaded) {
-    log::info("Emir Hub Loaded");
+    log::info("Loaded Emir Hub");
 }
+
+
