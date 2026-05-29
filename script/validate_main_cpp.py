@@ -24,16 +24,16 @@ def main() -> int:
 
     source = "\n".join(path.read_text(encoding="utf-8") for path in SOURCES)
 
-    member_names = re.findall(r"^\s{4}void\s+(\w+)\s*\(", source, flags=re.MULTILINE)
+    member_names = re.findall(r"^\s*(?:void|bool)\s+(\w+)\s*\(", source, flags=re.MULTILINE)
     counts = Counter(member_names)
     duplicates = sorted(name for name, count in counts.items() if count > 1)
 
-    selectors = set(re.findall(r"menu_selector\(ModernMenu::(\w+)\)", source))
+    selectors = set(re.findall(r"menu_selector\(\w+::(\w+)\)", source))
     missing_selectors = sorted(name for name in selectors if counts[name] == 0)
 
     if duplicates or missing_selectors:
         if duplicates:
-            print("Duplicate ModernMenu/global void definitions:", ", ".join(duplicates), file=sys.stderr)
+            print("Duplicate menu/global handler definitions:", ", ".join(duplicates), file=sys.stderr)
         if missing_selectors:
             print("menu_selector callbacks without handlers:", ", ".join(missing_selectors), file=sys.stderr)
         return 1
