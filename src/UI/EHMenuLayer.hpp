@@ -63,6 +63,6 @@ private:
     void _buildRows();
     void _addRow(int idx, float y);
     void _refreshRow(Row& r);
-    void _onRowTap(int hackIndex);
-    void _onClose();
+    void _onRowTap(CCObject* sender);   // menu_selector için CCObject* şart
+    void _onClose(CCObject* sender);    // menu_selector için CCObject* şart
 };

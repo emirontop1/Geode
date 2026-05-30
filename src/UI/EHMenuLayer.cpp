@@ -88,7 +88,7 @@ bool EHMenuLayer::init() {
     auto* xBtn = CCMenuItemSpriteExtra::create(
         xSpr,
         this,
-        menu_selector(EHMenuLayer::_onClose)
+        menu_selector(EHMenuLayer::_onClose)   // imza: void(CCObject*)
     );
     auto* xMenu = CCMenu::create(xBtn, nullptr);
     xMenu->setPosition(ccp(EH_MENU_W - 14.f, EH_MENU_H - EH_HEADER_H * .5f));
@@ -184,7 +184,7 @@ void EHMenuLayer::_onRowTap(CCObject* sender) {
     if (idx < (int)m_rows.size()) _refreshRow(m_rows[idx]);
 }
 
-void EHMenuLayer::_onClose() {
+void EHMenuLayer::_onClose(CCObject*) {
     s_instance = nullptr;
     Client::get().menuOpen = false;
     removeFromParent();
