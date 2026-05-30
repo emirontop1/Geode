@@ -147,7 +147,7 @@ class $modify (MenuLayer)
     {
         MenuLayer::init();
 
-        auto l = geode::LabelTTF::create("hello friend!\nããããåé!", "Arial.ttf");
+        auto l = geode::LabelTTF::create("hello friend!\nもしもし友達!", "Arial.ttf");
         l->setZOrder(8008);
         l->setAnchorPoint(ccp(0.5f, 0.5f));
         l->setPosition(getContentSize() / 2);

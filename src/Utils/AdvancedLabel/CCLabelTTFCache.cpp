@@ -10,7 +10,7 @@ CCLabelTTFCache* CCLabelTTFCache::get()
     {
         instance = new CCLabelTTFCache();
 
-        instance->label = CCLabelTTF::create("hehee ãã¯ãã", "KosugiMaru.ttf"_spr, 32);
+        instance->label = CCLabelTTF::create("hehee おはよう", "KosugiMaru.ttf"_spr, 32);
         instance->label->m_uReference = 80085;
     }
 

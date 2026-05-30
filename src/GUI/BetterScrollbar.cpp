@@ -41,7 +41,7 @@ void BetterScrollbar::visit()
 {
     this->setContentHeight(layer ? layer->getScaledContentHeight() : 0);
 
-    // ãã®ã³ã¼ããæãã 
+    // このコードが怖いだ
     if (layer)
     {
         float h = (layer->m_contentLayer->getContentHeight() - layer->getContentHeight());

@@ -22,7 +22,7 @@ class AutoClaimDailyChests : public Module
             {
                 auto rewards = GameStatsManager::sharedState()->m_rewardItems;
 
-                // ãããã¨ã
+                // ありがとう
                 // https://github.com/dotnetx86/Chest-Alert/blob/main/src/main.cpp
                 if (rewards->count() != 0)
                 {

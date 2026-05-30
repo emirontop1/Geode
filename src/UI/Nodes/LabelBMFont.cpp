@@ -190,12 +190,12 @@ class $modify (MenuLayer)
     {
         MenuLayer::init();
 
-        auto l = LabelBMFont::create("<cc>me</c>ow <cy>ç§</c>ã®<cp>æ¥æ¬èª</c>ã¯<cc>ä¸æ</c>ã ", "kosugimaru.fnt"_spr);
+        auto l = LabelBMFont::create("<cc>me</c>ow <cy>私</c>の<cp>日本語</c>は<cc>下手</c>だ", "kosugimaru.fnt"_spr);
         // auto l = LabelBMFont::create("hello :cat: meow", "bigFont.fnt");
         l->setPosition(getContentSize() / 2);
         this->addChild(l, 67);
 
-        auto old = AdvLabelBMFont::createWithString("<cc>me</c>ow <cy>ç§</c>ã®<cp>æ¥æ¬èª</c>ã¯<cc>ä¸æ</c>ã ", "kosugimaru.fnt"_spr);
+        auto old = AdvLabelBMFont::createWithString("<cc>me</c>ow <cy>私</c>の<cp>日本語</c>は<cc>下手</c>だ", "kosugimaru.fnt"_spr);
         old->setPosition(getContentSize() / 2 + ccp(0, -40));
         this->addChild(old, 67);
 

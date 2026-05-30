@@ -133,7 +133,7 @@ CCMenu* SelectFontUI::getHints(CCBMFontConfiguration* config)
     menu->setScale(0.4f);
     menu->setLayout(AxisLayout::create(Axis::Row)->setAutoScale(false)->setAxisAlignment(AxisAlignment::Start)->setGap(15));
 
-    if (config->getCharacterSet()->contains(12399)) // ã
+    if (config->getCharacterSet()->contains(12399)) // わ
     {
         auto l = AdvLabelBMFont::createWithString("JA", "bigFont.fnt");
         l->setOpacity(150);
@@ -144,7 +144,7 @@ CCMenu* SelectFontUI::getHints(CCBMFontConfiguration* config)
         menu->addChild(btn);
     }
 
-    if (config->getCharacterSet()->contains(1047)) // Ð·
+    if (config->getCharacterSet()->contains(1047)) // з
     {
         auto l = AdvLabelBMFont::createWithString("RU", "bigFont.fnt");
         l->setOpacity(150);
@@ -155,7 +155,7 @@ CCMenu* SelectFontUI::getHints(CCBMFontConfiguration* config)
         menu->addChild(btn);
     }
 
-    if (config->getCharacterSet()->contains(51020)) // ì
+    if (config->getCharacterSet()->contains(51020)) // 음
     {
         auto l = AdvLabelBMFont::createWithString("KO", "bigFont.fnt");
         l->setOpacity(150);
@@ -166,7 +166,7 @@ CCMenu* SelectFontUI::getHints(CCBMFontConfiguration* config)
         menu->addChild(btn);
     }
 
-    /*if (config->getCharacterSet()->contains(31627)) // ç®
+    /*if (config->getCharacterSet()->contains(31627)) // 简
     {
         auto l = AdvLabelBMFont::createWithString("ZH", "bigFont.fnt");
         l->setOpacity(150);

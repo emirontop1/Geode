@@ -50,7 +50,7 @@ void DropdownList::addItem(DropdownItem item)
         auto lbl = CCLabelBMFont::create(item.label.c_str(), "bigFont.fnt");
         lbl->setAnchorPoint(ccp(0, 0.5f));
 
-        // ã¨ã¦ãæã
+        // とても怖い
         lbl->limitLabelWidth(getContentWidth() - inset - inset - (spr ? (spr->getScaledContentWidth() + inset) : 0), 0.5f, 0);
 
         container->addChildAtPosition(lbl, Anchor::Left, ccp(inset + (spr ? (spr->getScaledContentWidth() + inset) : 0), 0));

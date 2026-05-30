@@ -23,7 +23,7 @@
 namespace ShapingEngine {
 
     namespace Options {
-        // converts normal numbers 123 to the HinduâArabic or IndoâArabic numerals automatically.
+        // converts normal numbers 123 to the Hindu–Arabic or Indo–Arabic numerals automatically.
         inline bool _convertToArabicNumbers = false;
         inline bool _discardChars = false;
     }
@@ -179,46 +179,46 @@ namespace ShapingEngine {
 
             // ****** SPACES ARE IMPORTANT! DO NOT REMOVE!! ****** //
 
-            glyphs.insert({ L'\u0640', Glyph(L"\u0640 \u0640") }); // Ù
-            glyphs.insert({ L'\u0627', Glyph(L"  \uFE8E") }); // Ø§
-            glyphs.insert({ L'\u0623', Glyph(L"  \uFE84") }); // Ø£
-            glyphs.insert({ L'\u0625', Glyph(L"  \uFE88") }); // Ø¥
-            glyphs.insert({ L'\u0622', Glyph(L"  \uFE82") }); // Ø¢
-            glyphs.insert({ L'\u0628', Glyph(L"\uFE91\uFE92\uFE90") }); // Ø¨
-            glyphs.insert({ L'\u062A', Glyph(L"\uFE97\uFE98\uFE96") }); // Øª
-            glyphs.insert({ L'\u062B', Glyph(L"\uFE9B\uFE9C\uFE9A") }); // Ø«
-            glyphs.insert({ L'\u062C', Glyph(L"\uFE9F\uFEA0\uFE9E") }); // Ø¬
-            glyphs.insert({ L'\u062D', Glyph(L"\uFEA3\uFEA4\uFEA2") }); // Ø­
-            glyphs.insert({ L'\u062E', Glyph(L"\uFEA7\uFEA8\uFEA6") }); // Ø®
-            glyphs.insert({ L'\u062F', Glyph(L"  \uFEAA") }); // Ø¯
-            glyphs.insert({ L'\u0630', Glyph(L"  \uFEAC") }); // Ø°
-            glyphs.insert({ L'\u0631', Glyph(L"  \uFEAE") }); // Ø±
-            glyphs.insert({ L'\u0632', Glyph(L"  \uFEB0") }); // Ø²
-            glyphs.insert({ L'\u0633', Glyph(L"\uFEB3\uFEB4\uFEB2") }); // Ø³
-            glyphs.insert({ L'\u0634', Glyph(L"\uFEB7\uFEB8\uFEB6") }); // Ø´
-            glyphs.insert({ L'\u0635', Glyph(L"\uFEBB\uFEBC\uFEBA") }); // Øµ
-            glyphs.insert({ L'\u0636', Glyph(L"\uFEBF\uFEC0\uFEBE") }); // Ø¶
-            glyphs.insert({ L'\u0637', Glyph(L"\uFEC3\uFEC4\uFEC2") }); // Ø·
-            glyphs.insert({ L'\u0638', Glyph(L"\uFEC7\uFEC8\uFEC6") }); // Ø¸
-            glyphs.insert({ L'\u0639', Glyph(L"\uFECB\uFECC\uFECA") }); // Ø¹
-            glyphs.insert({ L'\u063A', Glyph(L"\uFECF\uFED0\uFECE") }); // Øº
-            glyphs.insert({ L'\u0641', Glyph(L"\uFED3\uFED4\uFED2") }); // Ù
-            glyphs.insert({ L'\u0642', Glyph(L"\uFED7\uFED8\uFED6") }); // Ù
-            glyphs.insert({ L'\u0643', Glyph(L"\uFEDB\uFEDC\uFEDA") }); // Ù
-            glyphs.insert({ L'\u0644', Glyph(L"\uFEDF\uFEE0\uFEDE") }); // Ù
-            glyphs.insert({ L'\u0645', Glyph(L"\uFEE3\uFEE4\uFEE2") }); // Ù
-            glyphs.insert({ L'\u0646', Glyph(L"\uFEE7\uFEE8\uFEE6") }); // Ù
-            glyphs.insert({ L'\u0647', Glyph(L"\uFEEB\uFEEC\uFEEA") }); // Ù
-            glyphs.insert({ L'\u0648', Glyph(L"  \uFEEE") }); // Ù
-            glyphs.insert({ L'\u064A', Glyph(L"\uFEF3\uFEF4\uFEF2") }); // Ù
-            glyphs.insert({ L'\u0626', Glyph(L"\uFE8B\uFE8C\uFE8A") }); // Ø¦
-            glyphs.insert({ L'\u0649', Glyph(L"\u0649\u0649\uFEF0") }); // Ù
-            glyphs.insert({ L'\u0624', Glyph(L"  \uFE86") }); // Ø¤
-            glyphs.insert({ L'\u0629', Glyph(L"  \uFE94") }); // Ø©
-            glyphs.insert({ L'\uFEFB', Glyph(L"  \uFEFC") }); // ÙØ§
-            glyphs.insert({ L'\uFEF7', Glyph(L"  \uFEF8") }); // ÙØ£
-            glyphs.insert({ L'\uFEF9', Glyph(L"  \uFEFA") }); // ÙØ¥
-            glyphs.insert({ L'\uFEF5', Glyph(L"  \uFED6") }); // ÙØ¢
+            glyphs.insert({ L'\u0640', Glyph(L"\u0640 \u0640") }); // ـ
+            glyphs.insert({ L'\u0627', Glyph(L"  \uFE8E") }); // ا
+            glyphs.insert({ L'\u0623', Glyph(L"  \uFE84") }); // أ
+            glyphs.insert({ L'\u0625', Glyph(L"  \uFE88") }); // إ
+            glyphs.insert({ L'\u0622', Glyph(L"  \uFE82") }); // آ
+            glyphs.insert({ L'\u0628', Glyph(L"\uFE91\uFE92\uFE90") }); // ب
+            glyphs.insert({ L'\u062A', Glyph(L"\uFE97\uFE98\uFE96") }); // ت
+            glyphs.insert({ L'\u062B', Glyph(L"\uFE9B\uFE9C\uFE9A") }); // ث
+            glyphs.insert({ L'\u062C', Glyph(L"\uFE9F\uFEA0\uFE9E") }); // ج
+            glyphs.insert({ L'\u062D', Glyph(L"\uFEA3\uFEA4\uFEA2") }); // ح
+            glyphs.insert({ L'\u062E', Glyph(L"\uFEA7\uFEA8\uFEA6") }); // خ
+            glyphs.insert({ L'\u062F', Glyph(L"  \uFEAA") }); // د
+            glyphs.insert({ L'\u0630', Glyph(L"  \uFEAC") }); // ذ
+            glyphs.insert({ L'\u0631', Glyph(L"  \uFEAE") }); // ر
+            glyphs.insert({ L'\u0632', Glyph(L"  \uFEB0") }); // ز
+            glyphs.insert({ L'\u0633', Glyph(L"\uFEB3\uFEB4\uFEB2") }); // س
+            glyphs.insert({ L'\u0634', Glyph(L"\uFEB7\uFEB8\uFEB6") }); // ش
+            glyphs.insert({ L'\u0635', Glyph(L"\uFEBB\uFEBC\uFEBA") }); // ص
+            glyphs.insert({ L'\u0636', Glyph(L"\uFEBF\uFEC0\uFEBE") }); // ض
+            glyphs.insert({ L'\u0637', Glyph(L"\uFEC3\uFEC4\uFEC2") }); // ط
+            glyphs.insert({ L'\u0638', Glyph(L"\uFEC7\uFEC8\uFEC6") }); // ظ
+            glyphs.insert({ L'\u0639', Glyph(L"\uFECB\uFECC\uFECA") }); // ع
+            glyphs.insert({ L'\u063A', Glyph(L"\uFECF\uFED0\uFECE") }); // غ
+            glyphs.insert({ L'\u0641', Glyph(L"\uFED3\uFED4\uFED2") }); // ف
+            glyphs.insert({ L'\u0642', Glyph(L"\uFED7\uFED8\uFED6") }); // ق
+            glyphs.insert({ L'\u0643', Glyph(L"\uFEDB\uFEDC\uFEDA") }); // ك
+            glyphs.insert({ L'\u0644', Glyph(L"\uFEDF\uFEE0\uFEDE") }); // ل
+            glyphs.insert({ L'\u0645', Glyph(L"\uFEE3\uFEE4\uFEE2") }); // م
+            glyphs.insert({ L'\u0646', Glyph(L"\uFEE7\uFEE8\uFEE6") }); // ن
+            glyphs.insert({ L'\u0647', Glyph(L"\uFEEB\uFEEC\uFEEA") }); // ه
+            glyphs.insert({ L'\u0648', Glyph(L"  \uFEEE") }); // و
+            glyphs.insert({ L'\u064A', Glyph(L"\uFEF3\uFEF4\uFEF2") }); // ي
+            glyphs.insert({ L'\u0626', Glyph(L"\uFE8B\uFE8C\uFE8A") }); // ئ
+            glyphs.insert({ L'\u0649', Glyph(L"\u0649\u0649\uFEF0") }); // ى
+            glyphs.insert({ L'\u0624', Glyph(L"  \uFE86") }); // ؤ
+            glyphs.insert({ L'\u0629', Glyph(L"  \uFE94") }); // ة
+            glyphs.insert({ L'\uFEFB', Glyph(L"  \uFEFC") }); // لا
+            glyphs.insert({ L'\uFEF7', Glyph(L"  \uFEF8") }); // لأ
+            glyphs.insert({ L'\uFEF9', Glyph(L"  \uFEFA") }); // لإ
+            glyphs.insert({ L'\uFEF5', Glyph(L"  \uFED6") }); // لآ
         }
     };
 
@@ -352,7 +352,7 @@ namespace ShapingEngine {
             t.resize(writeIndex);
     }
 
-    // Converts normal numbers 123 to the HinduâArabic or IndoâArabic numerals
+    // Converts normal numbers 123 to the Hindu–Arabic or Indo–Arabic numerals
     // returns a wide string
     inline std::wstring w_arabify_numbers(std::wstring& t) {
         for (int i = 0; i < t.length(); i++)
@@ -381,13 +381,13 @@ namespace ShapingEngine {
         return t;
     }
 
-    // Converts normal numbers 123 to the HinduâArabic or IndoâArabic numerals
+    // Converts normal numbers 123 to the Hindu–Arabic or Indo–Arabic numerals
     // returns a narrowed string
     inline std::string arabify_numbers(std::wstring& t) {
         return Helper::narrow(w_arabify_numbers(t));
     }
 
-    // Converts normal numbers 123 to the HinduâArabic or IndoâArabic numerals
+    // Converts normal numbers 123 to the Hindu–Arabic or Indo–Arabic numerals
     // returns a narrowed string
     inline std::string arabify_numbers(std::string& t) {
         auto n = Helper::widen(t);
@@ -400,11 +400,11 @@ namespace ShapingEngine {
         Glyph::init_arabic();
         std::vector<std::wstring> words;
         Helper::wsplit(t, L" ", words);
-        // *** For special characters like ÙØ§ ÙØ£ ÙØ¥ ÙØ¢
-        while (Helper::wreplace(t, L"\u0644\u0627", L"\uFEFB")); // ÙØ§
-        while (Helper::wreplace(t, L"\u0644\u0623", L"\uFEF7")); // ÙØ£
-        while (Helper::wreplace(t, L"\u0644\u0625", L"\uFEF9")); // ÙØ¥
-        while (Helper::wreplace(t, L"\u0644\u0622", L"\uFEF5")); // ÙØ¢
+        // *** For special characters like لا لأ لإ لآ
+        while (Helper::wreplace(t, L"\u0644\u0627", L"\uFEFB")); // لا
+        while (Helper::wreplace(t, L"\u0644\u0623", L"\uFEF7")); // لأ
+        while (Helper::wreplace(t, L"\u0644\u0625", L"\uFEF9")); // لإ
+        while (Helper::wreplace(t, L"\u0644\u0622", L"\uFEF5")); // لآ
         // ***************************************
         shape_glyphs(t);
         reorder_glyphs(t, render_with_symbols, correct_num_order);
