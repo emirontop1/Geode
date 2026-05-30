@@ -1,0 +1,198 @@
+#include "CategoryNode.hpp"
+#include "../Utils/Casts.hpp"
+#include "../GUI/BetterMouseDispatcher.hpp"
+#include "../Utils/Num.hpp"
+#include <ScrollLayer.hpp>
+
+CategoryNode* CategoryNode::create()
+{
+    auto pRet = new CategoryNode();
+
+    if (pRet && pRet->init())
+    {
+        pRet->autorelease();
+        return pRet;
+    }
+
+    CC_SAFE_DELETE(pRet);
+    return nullptr;
+}
+
+void CategoryNode::addAdvanced(std::string name, std::function<CategoryNode*()> func)
+{
+    advCategories.emplace(name, func);
+}
+
+CategoryNode* CategoryNode::getNode(std::string category)
+{
+    if (advCategories.contains(category))
+        return advCategories[category]();
+
+    return create();
+}
+
+void CategoryNode::addModule(Module* module)
+{
+    if (!module)
+    {
+        modules.emplace(module, nullptr);
+        updateUI();
+        return;
+    }
+
+    auto node = module->getNode();
+    node->setLinkedRect(scroll);
+    node->setTag(modules.size());
+
+    modules.emplace(module, node);
+
+    scroll->m_contentLayer->addChild(node);
+    updateUI();
+}
+
+void CategoryNode::removeModule(Module* module)
+{
+    if (!modules.contains(module))
+        return;
+
+    auto node = modules[module];
+    node->removeFromParent();
+    modules.erase(module);
+
+    updateUI();
+}
+
+void CategoryNode::removeAll()
+{
+    for (auto node : modules)
+    {
+        if (node.second)
+            node.second->removeFromParent();
+    }
+
+    modules.clear();
+    updateUI();
+}
+
+void CategoryNode::updateUI()
+{
+    float height = std::max<float>((std::floor((modules.size() / 2.0f) + (((modules.size() % 2) == 0) ? 0 : 1))) * 28.0f, scroll->getContentHeight());
+    float height2 = height - (28 / 2) - 3;
+    float height3 = (modules.size() == 0 ? 0 : 6);
+
+    auto heightOld = scroll->m_contentLayer->getContentHeight();
+    scroll->m_contentLayer->setContentHeight(height + height3);
+
+    bool resetScroll = heightOld != scroll->m_contentLayer->getContentHeight();
+
+    bool showScrollbar = shouldScrollbarShow();
+
+    for (auto node : modules)
+    {
+        auto n = node.second;
+
+        if (!n)
+            continue;
+
+        bool right = (n->getTag() % 2 != 0);
+        float usWidth = showScrollbar ? getContentWidth() - scrollbar->getScaledContentWidth() + 2.5f : getContentWidth();
+
+        float x = right ? 85 : (showScrollbar ? 252 : 260);
+        float y = floor(n->getTag() / 2);
+
+        n->setAnchorPoint(ccp(right ? 1 : 0, 0.5f));
+        n->setPosition(ccp(right ? usWidth - 2.5f : 2.5f, height2 - (y * 28) + 6));
+    }
+
+    if (resetScroll)
+    {
+        scroll->moveToTop();
+        setID(getID());
+    }
+
+    scroll->setTouchEnabled(height + height3 != (scroll->getContentHeight() + height3));
+    scroll->setMouseEnabled(scroll->isTouchEnabled());
+    scrollbar->setVisible(showScrollbar);
+    scrollbar->setDisabled(!scroll->isTouchEnabled());
+}
+
+bool CategoryNode::shouldScrollbarShow()
+{
+    //return false;
+    return alwaysShowScrollbar ? true : scroll->isTouchEnabled();
+}
+
+bool CategoryNode::init()
+{
+    if (!CCNode::init())
+        return false;
+
+    this->setAnchorPoint(ccp(1, 0.5f));
+    this->setContentSize(ccp(340, 280 - 10 * 2));
+    this->ignoreAnchorPointForPosition(false);
+
+    bg = EasyBG::create();
+    bg->setContentSize(getContentSize());
+
+    scroll = qolmod::ScrollLayer::create(this->getContentSize());
+    scroll->m_peekLimitTop = 15;
+    scroll->m_peekLimitBottom = 15;
+    scroll->setTouchEnabled(false);
+
+    scrollbar = BetterScrollbar::create(scroll);
+    // updates size
+    scrollbar->visit();
+    scrollbar->setUseDynamicHandle(true);
+    scrollbar->setVisible(shouldScrollbarShow());
+    scrollbar->setAnchorPoint(ccp(1, 0));
+    scrollbar->setDisabled(true);
+    
+    this->addChildAtPosition(bg, Anchor::Center);
+    this->addChild(scroll);
+    this->addChildAtPosition(scrollbar, Anchor::BottomRight);
+    return true;
+}
+
+void CategoryNode::scrollWheel(float y, float x)
+{
+    if (nodeIsVisible(scroll) && scroll->isTouchEnabled())
+    {
+        if (auto n = getTopLevelNonSceneNode(this))
+        {
+            if (CCScene::get()->getChildByIndex(-1) != n)
+                return;
+        }
+
+        scroll->scrollLayer(y);
+    }
+}
+
+void CategoryNode::setContentSize(const CCSize& contentSize)
+{
+    CCMenu::setContentSize(contentSize);
+
+    if (bg)
+        bg->setContentSize(contentSize);
+
+    if (scroll)
+    {
+        scroll->setContentSize(contentSize);
+        updateUI();
+    }
+
+    updateLayout();
+}
+
+void CategoryNode::setID(std::string id)
+{
+    CCNode::setID(id);
+
+    if (categoryScrolls.contains(id) && scroll)
+        scroll->m_contentLayer->setPosition(categoryScrolls[id]);
+}
+
+CategoryNode::~CategoryNode()
+{
+    // this is terrible
+    categoryScrolls[getID()] = scroll->m_contentLayer->getPosition();
+}
