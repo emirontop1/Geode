@@ -1,51 +1,18 @@
-# Emir Hub
+> This is the code for the new v2.x.x rewrite
+> The legacy v1.x.x code can be seen on the [legacy branch](https://github.com/TheSillyDoggo/GeodeMenu/tree/legacy)
 
-Emir Hub is an in-level Geode playtest menu for Geometry Dash. It is built as a compact, Mega-Hack-inspired utility panel focused on quick testing, visual debugging, and safe assist toggles.
+# QOLMod
 
-<img src="logo.png" width="150" alt="Emir Hub logo" />
+A free mod menu for Geometry Dash, with **a user friendly interface** and **over 70 features** to help improve your Geometry Dash experience such as **Speedhack, Show Hitboxes, StartPos Switcher, Solid Wave Trail** and **much** more!
 
-## Features
+If you have any issues with the mod, you can join our [Discord server](https://discord.gg/DfQSTEnQKK) for help!
 
-### Player tab
-- **No Death**: toggles `PlayLayer::toggleIgnoreDamage` for safe route testing.
-- **Practice**: toggles practice mode while keeping other menu settings active.
-- **Hide P1**: hides/shows the player icon for visibility checks.
-- **Attempts / Progress / Info**: quick UI visibility controls.
+# How to use
 
-### Assist tab
-- **Auto Play**: enables the assist engine.
-- **Ground AI**: detects nearby solid collision objects, spikes, and wall-like blockers, then jumps/taps for cube, ball, robot, and spider gameplay.
-- **Air AI**: steers or taps around nearby obstacles and level bounds for ship, UFO, wave, and swing gameplay.
-- **Platform**: holds the right movement input for platformer-style tests.
-- **Auto All**: enables the full all-mode assist stack at once.
-- **Release**: force-releases any auto-held inputs.
+- On Windows and Mac, press **Tab** on your keyboard.
+- On Android, press the button on your screen to open the mod menu.
 
-### Visual tab
-- **Hitboxes**: uses Geode debug draw safely via `shouldDebugDraw` + `toggleDebugDraw`.
-- **Ground / MG / BG FX**: quick visibility toggles for level layers and effects.
-- **Debug**: refreshes debug draw settings.
-- **Glitter**: refreshes glitter visibility.
+# Credits
 
-### Utility tab
-- **Speed**: cycles playtest time-mod values up to 2.00x.
-- **Slower / Normal**: quick speed adjustment buttons.
-- **Restart**: restarts from the beginning and reapplies active options.
-- **Clear CP**: removes all practice checkpoints.
-- **About**: in-game feature summary.
-
-## Notes
-
-Auto Play is a heuristic playtest assist, not a perfect verifier. It scans visible gameplay collision objects ahead of the player and supports cube, ship, ball, UFO, wave, robot, spider, swing, and platformer-style tests. It works best with **No Death** enabled while tuning hard levels.
-
-## Build instructions
-
-```sh
-# Requires the Geode CLI / SDK environment
-geode build
-```
-
-## Resources
-
-- [Geode SDK Documentation](https://docs.geode-sdk.org/)
-- [Geode SDK Source Code](https://github.com/geode-sdk/geode/)
-- [Geode CLI](https://github.com/geode-sdk/cli)
+> Category icons
+>> https://www.flaticon.com/
