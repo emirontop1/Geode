@@ -1,5 +1,5 @@
-#include "Trajectory.hpp"
-#include "../../Client/Client.hpp"
+#include "Hacks/Trajectory/Trajectory.hpp"
+#include "Client/Client.hpp"
 
 /* ══════════════════════════════
    Fizik sabitleri
