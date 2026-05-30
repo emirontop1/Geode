@@ -3,9 +3,9 @@
 #include <Geode/modify/PlayLayer.hpp>
 #include <Geode/modify/MenuLayer.hpp>
 #include <Geode/modify/PauseLayer.hpp>
-#include "../UI/EHMenuLayer.hpp"
-#include "../Client/Client.hpp"
-#include "../Hacks/Trajectory/Trajectory.hpp"
+#include "UI/EHMenuLayer.hpp"
+#include "Client/Client.hpp"
+#include "Hacks/Trajectory/Trajectory.hpp"
 
 using namespace geode::prelude;
 using namespace cocos2d;
