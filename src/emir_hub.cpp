@@ -1,265 +1,432 @@
-/*
- * Emir Hub — Huge Mod Menu
- * Geode / GD 2.2081 / Android aarch64
+/**
+ * emir_hub.cpp
+ * Geode Mod — EmiR Hub
+ *
+ * Özellik: Oyuncu anda zıpladığında (veya mod'a göre inputa bastığında)
+ * nereye gideceğini gösteren trajectory (yol tahmini) çizgisi.
+ * - Cube, Ship, Ball, UFO (Bird), Wave (Dart), Robot, Spider, Swing ve
+ *   Platformer modların tümünü destekler.
+ * - m_isPassable == false olan objeler (solid bloklar) çarpışmayı durdurur.
+ * - GJBaseGameLayer::staticObjectsInRect() ile çevreden solid objeleri alır.
+ * - Her frame PlayLayer::postUpdate hook'u içinde güncellenir.
  */
-#include <Geode/Geode.hpp>
-#include <Geode/ui/Popup.hpp>
-#include <Geode/modify/PauseLayer.hpp>
-#include <Geode/modify/PlayLayer.hpp>
 
-#include <cmath>
+#include <Geode/Geode.hpp>
+#include <Geode/modify/PlayLayer.hpp>
+#include <Geode/modify/GJBaseGameLayer.hpp>
+#include <Geode/ui/GeodeUI.hpp>
 
 using namespace geode::prelude;
 using namespace cocos2d;
 
-namespace emir_hub {
-    constexpr int kPreviewSegments = 24;
-    constexpr float kPreviewStep = 1.0f / 12.0f;
-    constexpr float kLineRadius = 1.35f;
-    constexpr float kMinimumVelocity = 0.01f;
-    constexpr int kDrawZOrder = 9997;
+/* ─────────────────────────────────────────────
+   Simülasyon sabitleri
+   ───────────────────────────────────────────── */
+static constexpr int   SIM_STEPS        = 120;   // kaç adım simüle edilecek
+static constexpr float SIM_DT           = 1.0f / 60.0f; // her adımın süresi (saniye)
+static constexpr float GRAVITY          = -900.0f;  // piksel / s²  (normal gravity)
+static constexpr float SHIP_ACCEL_UP    = 700.0f;
+static constexpr float SHIP_ACCEL_DOWN  = 700.0f;
+static constexpr float WAVE_ANGLE_UP    = -45.0f;   // derece
+static constexpr float WAVE_ANGLE_DOWN  =  45.0f;
+static constexpr float PLAYER_HITBOX_W  = 30.0f;
+static constexpr float PLAYER_HITBOX_H  = 30.0f;
+static constexpr float TRAJ_DOT_RADIUS  = 3.5f;
+static constexpr int   DOT_COLOR_R      = 255;
+static constexpr int   DOT_COLOR_G      = 220;
+static constexpr int   DOT_COLOR_B      = 50;
+static constexpr float DOT_OPACITY_MAX  = 200.0f;   // 0-255
 
-    bool g_trajectoryEnabled = true;
-    CCDrawNode* g_trajectoryNode = nullptr;
+/* ─────────────────────────────────────────────
+   Mod adı / ayarlar için Geode keys
+   ───────────────────────────────────────────── */
+static const std::string SETTING_ENABLED   = "trajectory_enabled";
+static const std::string SETTING_DOT_COUNT = "dot_count";
 
-    CCPoint getPlayerVelocity(PlayerObject* player) {
-        if (!player) {
-            return ccp(0.0f, 0.0f);
-        }
-
-        return ccp(
-            static_cast<float>(player->getCurrentXVelocity()),
-            static_cast<float>(player->getYVelocity())
-        );
-    }
-
-    bool hasDrawableVelocity(CCPoint const& velocity) {
-        return std::abs(velocity.x) > kMinimumVelocity || std::abs(velocity.y) > kMinimumVelocity;
-    }
-
-    void clearTrajectory() {
-        if (g_trajectoryNode) {
-            g_trajectoryNode->clear();
-        }
-    }
-
-    void detachTrajectoryNode() {
-        clearTrajectory();
-        g_trajectoryNode = nullptr;
-    }
-
-    void refreshTrajectory(PlayLayer* layer) {
-        if (!g_trajectoryEnabled || !g_trajectoryNode) {
-            clearTrajectory();
-            return;
-        }
-
-        g_trajectoryNode->clear();
-
-        if (!layer || !layer->isGameplayActive()) {
-            return;
-        }
-
-        auto player = layer->m_player1;
-        if (!player) {
-            return;
-        }
-
-        auto const velocity = getPlayerVelocity(player);
-        if (!hasDrawableVelocity(velocity)) {
-            return;
-        }
-
-        auto previous = player->getPosition();
-        auto const color = ccc4f(1.0f, 0.9f, 0.05f, 0.9f);
-
-        for (int step = 1; step <= kPreviewSegments; ++step) {
-            auto const time = static_cast<float>(step) * kPreviewStep;
-            auto const next = ccp(
-                previous.x + velocity.x * kPreviewStep,
-                player->getPositionY() + velocity.y * time
-            );
-
-            g_trajectoryNode->drawSegment(previous, next, kLineRadius, color);
-            previous = next;
-        }
-    }
+/* ─────────────────────────────────────────────
+   Yardımcı: GameObjectType'dan mod adı
+   ───────────────────────────────────────────── */
+static std::string modeName(PlayerCheckpoint* cp) {
+    if (!cp) return "Cube";
+    if (cp->m_isShip)   return "Ship";
+    if (cp->m_isBall)   return "Ball";
+    if (cp->m_isBird)   return "UFO";
+    if (cp->m_isDart)   return "Wave";
+    if (cp->m_isRobot)  return "Robot";
+    if (cp->m_isSpider) return "Spider";
+    if (cp->m_isSwing)  return "Swing";
+    return "Cube";
 }
 
-class $modify(EmirHubPlayLayer, PlayLayer) {
-    bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
-        if (!PlayLayer::init(level, useReplay, dontCreateObjects)) {
-            return false;
-        }
+/* ─────────────────────────────────────────────
+   Solid kontrol
+   isPassable == true  → geçilebilir (sadece dekorasyon / trigger)
+   isPassable == false → katı blok, çarpışma var
+   ───────────────────────────────────────────── */
+static bool isSolidObject(GameObject* obj) {
+    if (!obj)                  return false;
+    if (obj->m_isDisabled)     return false;
+    if (obj->m_isTrigger)      return false;
+    if (obj->m_isInvisibleBlock) return false;
+    if (obj->m_isPassable)     return false;  // geçilebilir → solid değil
+    if (obj->m_isDecoration)   return false;
+    if (obj->m_isDecoration2)  return false;
+    return true;
+}
 
-        emir_hub::g_trajectoryNode = CCDrawNode::create();
-        emir_hub::g_trajectoryNode->setZOrder(emir_hub::kDrawZOrder);
-        this->addChild(emir_hub::g_trajectoryNode);
+/* ─────────────────────────────────────────────
+   Solid çarpışma kontrolü: verilen rect içinde
+   solid bir obje var mı?
+   ───────────────────────────────────────────── */
+static bool collidesWithSolid(GJBaseGameLayer* gbl, CCPoint pos) {
+    if (!gbl) return false;
 
-        auto categoryMenu = CCMenu::create();
-        categoryMenu->setPosition({0.0f, 0.0f});
-        m_mainLayer->addChild(categoryMenu);
+    CCRect hitbox = CCRect(
+        pos.x - PLAYER_HITBOX_W * 0.5f,
+        pos.y - PLAYER_HITBOX_H * 0.5f,
+        PLAYER_HITBOX_W,
+        PLAYER_HITBOX_H
+    );
 
-        for (size_t i = 0; i < kCategories.size(); ++i) {
-            auto label = CCLabelBMFont::create(kCategories[i].name, "bigFont.fnt");
-            label->setScale(0.32f);
-            auto item = CCMenuItemSpriteExtra::create(label, this, menu_selector(EmirHubPopup::onCategory));
-            item->setTag(static_cast<int>(i));
-            item->setPosition({43.0f + static_cast<float>(i % 4) * 83.0f, 224.0f - static_cast<float>(i / 4) * 21.0f});
-            categoryMenu->addChild(item);
-        }
+    // Statik (solid) objeleri al
+    CCArray* statics = gbl->staticObjectsInRect(hitbox, true);
+    if (!statics) return false;
 
-        auto navMenu = CCMenu::create();
-        navMenu->setPosition({0.0f, 0.0f});
-        m_mainLayer->addChild(navMenu);
-
-        auto prevLabel = CCLabelBMFont::create("< Prev", "bigFont.fnt");
-        prevLabel->setScale(0.44f);
-        auto prevItem = CCMenuItemSpriteExtra::create(prevLabel, this, menu_selector(EmirHubPopup::onPrevPage));
-        prevItem->setPosition({52.0f, 24.0f});
-        navMenu->addChild(prevItem);
-
-        auto nextLabel = CCLabelBMFont::create("Next >", "bigFont.fnt");
-        nextLabel->setScale(0.44f);
-        auto nextItem = CCMenuItemSpriteExtra::create(nextLabel, this, menu_selector(EmirHubPopup::onNextPage));
-        nextItem->setPosition({368.0f, 24.0f});
-        navMenu->addChild(nextItem);
-
-        m_statusLabel = CCLabelBMFont::create("", "chatFont.fnt");
-        m_statusLabel->setScale(0.52f);
-        m_statusLabel->setAnchorPoint({0.5f, 0.5f});
-        m_statusLabel->setPosition({210.0f, 45.0f});
-        m_mainLayer->addChild(m_statusLabel);
-
-        refreshContent();
-        return true;
-    }
-
-    void refreshContent() {
-        clampNavigation();
-        m_contentLayer->removeAllChildrenWithCleanup(true);
-
-        auto title = fmt::format("{} | page {}/{}", kCategories[g_category].name, g_page + 1, maxPageForCategory(g_category) + 1);
-        makeLabel(title.c_str(), 0.45f, {210.0f, 181.0f}, m_contentLayer);
-
-        auto description = CCLabelBMFont::create(kCategories[g_category].description, "chatFont.fnt");
-        description->setScale(0.45f);
-        description->setPosition({210.0f, 162.0f});
-        m_contentLayer->addChild(description);
-
-        auto featureMenu = CCMenu::create();
-        featureMenu->setPosition({0.0f, 0.0f});
-        m_contentLayer->addChild(featureMenu);
-
-        for (size_t row = 0; row < kRowsPerPage; ++row) {
-            auto index = absoluteFeatureIndex(g_category, g_page, static_cast<int>(row));
-            if (index >= kFeatures.size()) {
-                continue;
+    for (int i = 0; i < (int)statics->count(); i++) {
+        auto* obj = static_cast<GameObject*>(statics->objectAtIndex(i));
+        if (isSolidObject(obj)) {
+            // AABB çakışması
+            CCRect objRect = obj->boundingBox();
+            if (hitbox.intersectsRect(objRect)) {
+                return true;
             }
+        }
+    }
+    return false;
+}
 
-            auto const& feature = kFeatures[index];
-            auto enabled = g_enabled[index];
-            auto prefix = enabled ? "[ON]" : (isMomentaryAction(feature.action) ? "[>>]" : "[--]");
-            auto text = fmt::format("{} {}", prefix, feature.title);
-            auto label = CCLabelBMFont::create(text.c_str(), enabled ? "goldFont.fnt" : "bigFont.fnt");
-            label->setScale(0.28f);
-            auto item = CCMenuItemSpriteExtra::create(label, this, menu_selector(EmirHubPopup::onFeature));
-            item->setTag(static_cast<int>(index));
-            auto col = static_cast<float>(row / 6);
-            auto localRow = static_cast<float>(row % 6);
-            item->setPosition({112.0f + col * 202.0f, 139.0f - localRow * 17.0f});
-            featureMenu->addChild(item);
+/* ─────────────────────────────────────────────
+   Trajectory noktaları hesapla
+   Checkpoint verilerini oku; her mod için
+   farklı fizik simüle et.
+   ───────────────────────────────────────────── */
+static std::vector<CCPoint> computeTrajectory(
+    PlayLayer* pl,
+    PlayerCheckpoint* cp,
+    PlayerObject* player,
+    LevelSettingsObject* settings)
+{
+    std::vector<CCPoint> points;
+    if (!pl || !cp || !player) return points;
 
-            auto desc = CCLabelBMFont::create(feature.description, "chatFont.fnt");
-            desc->setScale(0.23f);
-            desc->setAnchorPoint({0.0f, 0.5f});
-            desc->setPosition({18.0f + col * 202.0f, 130.5f - localRow * 17.0f});
-            desc->setOpacity(130);
-            m_contentLayer->addChild(desc);
+    GJBaseGameLayer* gbl = static_cast<GJBaseGameLayer*>(pl);
+
+    // Başlangıç durumu
+    float px    = player->getPositionX();
+    float py    = player->getPositionY();
+    float vx    = player->getCurrentXVelocity();
+    float vy    = 0.0f;  // zıpla anındaki Y hızı (simülasyon başlangıcı)
+    float grav  = cp->m_gravityMod > 0.0f ? cp->m_gravityMod : 1.0f;
+    float gravDir = cp->m_isUpsideDown ? 1.0f : -1.0f;  // ters yerçekimi
+    bool  isPlatformer = settings ? settings->m_platformerMode : false;
+
+    /* --- Mod tespiti --- */
+    bool isCube    = !cp->m_isShip && !cp->m_isBall && !cp->m_isBird &&
+                     !cp->m_isDart && !cp->m_isRobot && !cp->m_isSpider &&
+                     !cp->m_isSwing;
+    bool isShip    = cp->m_isShip;
+    bool isBall    = cp->m_isBall;
+    bool isBird    = cp->m_isBird;   // UFO
+    bool isWave    = cp->m_isDart;
+    bool isRobot   = cp->m_isRobot;
+    bool isSpider  = cp->m_isSpider;
+    bool isSwing   = cp->m_isSwing;
+
+    // Mod bazlı başlangıç Y hızı (jump anı simülasyonu)
+    if (isCube || isRobot) {
+        // Cube/Robot: klasik jump, hız yaklaşık 550
+        vy = 550.0f * grav;
+        if (cp->m_isMini) vy *= 0.75f;
+    } else if (isBall) {
+        // Ball: yerçekimi tersine döner, hız düşük
+        vy = 300.0f * grav;
+    } else if (isBird) {
+        // UFO: sabit boost
+        vy = 350.0f * grav;
+    } else if (isShip || isSwing) {
+        // Ship/Swing: sürekli yukarı iter
+        vy = 200.0f * grav;
+    } else if (isWave) {
+        // Wave (Dart): sabit açıda hareket; vy simülasyonu gerekmez
+        vy = 0.0f;
+    } else if (isSpider) {
+        // Spider: karşı duvara veya zeminine zıplar
+        vy = 450.0f * grav;
+    }
+
+    // Platformer modda yatay hız daha düşük
+    if (isPlatformer) {
+        vx = (vx == 0.0f) ? 200.0f : vx;
+    }
+
+    int dotCount = Mod::get()->getSettingValue<int64_t>(SETTING_DOT_COUNT);
+    if (dotCount <= 0 || dotCount > SIM_STEPS) dotCount = SIM_STEPS;
+
+    /* ─── Simülasyon döngüsü ─── */
+    for (int step = 0; step < dotCount; step++) {
+        float t = (float)step / (float)dotCount;
+
+        /* Wave (Dart) özel hareketi:
+           Sabit açıyla yönelir, yerçekimi yoktur */
+        if (isWave) {
+            float waveAngleDeg = cp->m_isUpsideDown ? WAVE_ANGLE_DOWN : WAVE_ANGLE_UP;
+            float rad = CC_DEGREES_TO_RADIANS(waveAngleDeg);
+            float speed = std::abs(vx) > 0.0f ? std::abs(vx) : 300.0f;
+            px += std::cos(rad) * speed * SIM_DT;
+            py += std::sin(rad) * speed * SIM_DT;
+        } else if (isShip) {
+            /* Ship: input basılıysa yukarı, değilse aşağı */
+            float accel = SHIP_ACCEL_UP * grav * gravDir;
+            vy += accel * SIM_DT;
+            vy = std::clamp(vy, -700.0f, 700.0f);
+            px += vx * SIM_DT;
+            py += vy * SIM_DT;
+        } else if (isSwing) {
+            /* Swing: Ship benzeri ama swing ateşi modu */
+            float accel = SHIP_ACCEL_UP * 0.9f * grav * gravDir;
+            vy += accel * SIM_DT;
+            vy = std::clamp(vy, -650.0f, 650.0f);
+            px += vx * SIM_DT;
+            py += vy * SIM_DT;
+        } else if (isBall) {
+            /* Ball: yerçekimi tersine döner, arc yapar */
+            float gravAccel = GRAVITY * grav * (-gravDir);
+            vy += gravAccel * SIM_DT;
+            px += vx * SIM_DT;
+            py += vy * SIM_DT;
+        } else {
+            /* Cube, UFO, Robot, Spider: standart parabolik yerçekimi */
+            float gravAccel = GRAVITY * grav * gravDir;
+            vy += gravAccel * SIM_DT;
+            px += vx * SIM_DT;
+            py += vy * SIM_DT;
         }
 
-        auto status = fmt::format(
-            "{} active here | {} active total | {} rows | speed {:.2f}x",
-            g_profile.activeByCategory[g_category], g_profile.totalActive, kFeatureCount, g_timeWarp
-        );
-        m_statusLabel->setString(status.c_str());
+        CCPoint simPos = ccp(px, py);
+
+        // Solid çarpışma kontrolü
+        if (collidesWithSolid(gbl, simPos)) {
+            // Son noktayı ekle, çizimi bitir
+            points.push_back(simPos);
+            break;
+        }
+
+        points.push_back(simPos);
     }
 
-    void onFeature(CCObject* sender) {
-        auto item = static_cast<CCNode*>(sender);
-        auto index = static_cast<size_t>(item->getTag());
-        runAction(index);
-        refreshContent();
-    }
+    return points;
+}
 
-    void onCategory(CCObject* sender) {
-        auto item = static_cast<CCNode*>(sender);
-        g_category = item->getTag();
-        g_page = 0;
-        refreshContent();
-    }
-
-    void onPrevPage(CCObject*) {
-        --g_page;
-        refreshContent();
-    }
-
-    void onNextPage(CCObject*) {
-        ++g_page;
-        refreshContent();
-    }
-
+/* ─────────────────────────────────────────────
+   Trajectory çizim katmanı (CCNode)
+   PlayLayer'ın üstüne eklenir.
+   ───────────────────────────────────────────── */
+class TrajectoryNode : public CCNode {
 public:
-    static EmirHubPopup* create() {
-        auto ret = new EmirHubPopup();
-        if (ret && ret->initAnchored(420.0f, 280.0f)) {
-            ret->autorelease();
-            return ret;
+    std::vector<CCPoint> m_points;
+    CCLabelBMFont*        m_modeLabel = nullptr;
+
+    static TrajectoryNode* create() {
+        auto* node = new TrajectoryNode();
+        if (node && node->init()) {
+            node->autorelease();
+            return node;
         }
-        delete ret;
+        CC_SAFE_DELETE(node);
         return nullptr;
     }
-};
-} // namespace emir_hub
 
-class $modify(EmirHubPauseLayer, PauseLayer) {
-    void customSetup() {
-        PauseLayer::customSetup();
+    bool init() override {
+        if (!CCNode::init()) return false;
 
-        auto menu = CCMenu::create();
-        menu->setPosition({0.0f, 0.0f});
-        this->addChild(menu, 9999);
+        // Mod ismi etiketi
+        m_modeLabel = CCLabelBMFont::create("", "bigFont.fnt");
+        m_modeLabel->setScale(0.45f);
+        m_modeLabel->setColor({DOT_COLOR_R, DOT_COLOR_G, DOT_COLOR_B});
+        m_modeLabel->setOpacity(200);
+        this->addChild(m_modeLabel, 2);
 
-        auto label = CCLabelBMFont::create("Emir Hub XXL", "bigFont.fnt");
-        label->setScale(0.42f);
-        auto button = CCMenuItemSpriteExtra::create(label, this, menu_selector(EmirHubPauseLayer::onOpenEmirHub));
-        button->setPosition({CCDirector::sharedDirector()->getWinSize().width - 70.0f, 32.0f});
-        menu->addChild(button);
-    }
-
-    void onOpenEmirHub(CCObject*) {
-        emir_hub::EmirHubPopup::create()->show();
-    }
-};
-
-class $modify(EmirHubPlayLayer, PlayLayer) {
-    bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
-        if (!PlayLayer::init(level, useReplay, dontCreateObjects)) {
-            return false;
-        }
-
-        emir_hub::g_playLayer = this;
-        emir_hub::applyPersistentFeatures(this);
         return true;
     }
 
-    void update(float dt) {
-        PlayLayer::update(dt);
-        emir_hub::refreshTrajectory(this);
+    void setPoints(const std::vector<CCPoint>& points, const std::string& mode) {
+        m_points = points;
+        if (m_modeLabel && !points.empty()) {
+            m_modeLabel->setString(("Trajectory — " + mode).c_str());
+            // Etiketi ilk noktanın biraz üstüne koy
+            m_modeLabel->setPosition(
+                ccp(points.front().x, points.front().y + 25.0f)
+            );
+        }
+        this->setVisible(!points.empty());
     }
 
-    void onExit() {
-        emir_hub::detachTrajectoryNode();
-        PlayLayer::onExit();
+    /* Özel çizim: her nokta için küçük bir daire (CCDrawNode kullan) */
+    void draw() override {
+        CCNode::draw();
+        if (m_points.empty()) return;
+
+        // Fade: baştaki noktalar tam opak, sona doğru soluklaşır
+        int n = (int)m_points.size();
+        for (int i = 0; i < n; i++) {
+            float alpha = 1.0f - ((float)i / (float)n) * 0.85f;
+            ccDrawColor4B(
+                DOT_COLOR_R,
+                DOT_COLOR_G,
+                DOT_COLOR_B,
+                (GLubyte)(DOT_OPACITY_MAX * alpha)
+            );
+            ccDrawCircle(m_points[i], TRAJ_DOT_RADIUS, 0, 12, false);
+        }
     }
 };
+
+/* ─────────────────────────────────────────────
+   PlayLayer hook
+   ───────────────────────────────────────────── */
+class $modify(EHPlayLayer, PlayLayer) {
+    struct Fields {
+        TrajectoryNode* trajectoryNode = nullptr;
+        PlayerCheckpoint* tempCp       = nullptr;
+    };
+
+    /* postUpdate: her frame çalışır */
+    void postUpdate(float dt) override {
+        PlayLayer::postUpdate(dt);
+
+        if (!Mod::get()->getSettingValue<bool>(SETTING_ENABLED)) {
+            if (m_fields->trajectoryNode)
+                m_fields->trajectoryNode->setVisible(false);
+            return;
+        }
+
+        _ensureTrajectoryNode();
+        _updateTrajectory();
+    }
+
+    /* Level reset/tekrar başlatma */
+    void resetLevel() override {
+        PlayLayer::resetLevel();
+        if (m_fields->trajectoryNode)
+            m_fields->trajectoryNode->setPoints({}, "");
+    }
+
+private:
+    /* Trajectory node yoksa oluştur ve sahneye ekle */
+    void _ensureTrajectoryNode() {
+        if (m_fields->trajectoryNode) return;
+
+        auto* node = TrajectoryNode::create();
+        if (!node) return;
+
+        // PlayLayer'ın UI katmanına ekle (z-order yüksek)
+        this->addChild(node, 1000);
+        m_fields->trajectoryNode = node;
+    }
+
+    /* Trajectory hesapla ve çiz */
+    void _updateTrajectory() {
+        auto* node = m_fields->trajectoryNode;
+        if (!node) return;
+
+        PlayerObject* player = m_player1;
+        if (!player) {
+            node->setPoints({}, "");
+            return;
+        }
+
+        // Geçici checkpoint ile anlık durumu oku
+        PlayerCheckpoint* cp = PlayerCheckpoint::create();
+        if (!cp) { node->setPoints({}, ""); return; }
+        player->saveToCheckpoint(cp);
+
+        std::string mode = modeName(cp);
+
+        LevelSettingsObject* settings = m_levelSettings;
+
+        std::vector<CCPoint> pts = computeTrajectory(this, cp, player, settings);
+
+        // Trajectory node'u playerın parent düğümüne göre düzelt
+        // (PlayLayer'ın dünya koordinatlarında)
+        node->setPosition(CCPointZero);
+        node->setPoints(pts, mode);
+
+        // cp artık gerekli değil (autorelease olduğu için serbest bırakılır)
+    }
+};
+
+/* ─────────────────────────────────────────────
+   Mod menüsü: Geode Settings panel üzerinden
+   Ayarlar mod.json içinde tanımlanır.
+   Burada çalışma zamanı toggle için kısa bir
+   FLAlertLayer popup da ekliyoruz.
+   ───────────────────────────────────────────── */
+class EHMenuLayer : public FLAlertLayer {
+public:
+    static EHMenuLayer* create() {
+        auto* layer = new EHMenuLayer();
+        if (layer && layer->init(nullptr, "EmiR Hub", "Trajectory sistemi aktif/pasif:",
+                                 "Kapat", "Aç/Kapat", 300.0f)) {
+            layer->autorelease();
+            return layer;
+        }
+        CC_SAFE_DELETE(layer);
+        return nullptr;
+    }
+
+    void FLAlert_Clicked(FLAlertLayer* layer, bool btn2) override {
+        if (btn2) {
+            bool cur = Mod::get()->getSettingValue<bool>(SETTING_ENABLED);
+            (void)Mod::get()->setSettingValue<bool>(SETTING_ENABLED, !cur);
+        }
+    }
+};
+
+/* ─────────────────────────────────────────────
+   mod.json tanımı (başlık yorumu olarak)
+   ─────────────────────────────────────────────
+   {
+     "id":          "emirkaya.emir_hub",
+     "name":        "EmiR Hub",
+     "developer":   "EmiR",
+     "version":     "1.0.0",
+     "geode":       "3.0.0",
+     "gd":          { "win": "2.2081", "android": "2.2081", "mac": "2.2081" },
+     "dependencies": [
+       { "id": "geode.loader", "version": ">=3.0.0", "importance": "required" }
+     ],
+     "settings": {
+       "trajectory_enabled": {
+         "name":    "Trajectory Aktif",
+         "description": "Zıplandığında yol tahmini çizgisini göster/gizle.",
+         "type":    "bool",
+         "default": true
+       },
+       "dot_count": {
+         "name":    "Nokta Sayısı",
+         "description": "Trajectory'de kaç nokta gösterilsin (10-120).",
+         "type":    "int",
+         "default": 60,
+         "min":     10,
+         "max":     120
+       }
+     }
+   }
+   ─────────────────────────────────────────────── */
+
+/* ─────────────────────────────────────────────
+   Geode entry point
+   ───────────────────────────────────────────── */
+$on_mod(Loaded) {
+    log::info("[EmiR Hub] Mod yüklendi. Trajectory sistemi hazır.");
+}
