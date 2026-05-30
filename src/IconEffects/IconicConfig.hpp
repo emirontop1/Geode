@@ -1,0 +1,73 @@
+#pragma once
+
+#include <Geode/Geode.hpp>
+#include "ColourConfig.hpp"
+#include "IconicCommon.hpp"
+
+class IconicConfig
+{
+    protected:
+        std::string saveStr = "";
+        IconicGamemodeType gamemode;
+        bool player2;
+        
+        ColourConfig primary = {};
+        ColourConfig secondary = {};
+        ColourConfig glow = {};
+        ColourConfig trail = {};
+        ColourConfig ghost = {};
+        ColourConfig waveTrail = {};
+        ColourConfig dashFire = {};
+        ColourConfig spiderTeleport = {};
+        ColourConfig fineOutline = {};
+        bool primaryEnabled = false;
+        bool secondaryEnabled = false;
+        bool glowEnabled = false;
+        bool trailEnabled = false;
+        bool ghostEnabled = false;
+        bool waveTrailEnabled = false;
+        bool dashFireEnabled = false;
+        bool spiderTeleportEnabled = false;
+        bool fineOutlineEnabled = false;
+
+    public:
+        static IconicConfig* create(IconicGamemodeType gamemode, bool player2);
+
+        cocos2d::ccColor3B getDefault(IconicEffectType type);
+
+        cocos2d::ccColor3B getPrimary(bool ignoreP2 = false);
+        cocos2d::ccColor3B getSecondary(bool ignoreP2 = false);
+        cocos2d::ccColor3B getGlow();
+        cocos2d::ccColor3B getTrail();
+        cocos2d::ccColor3B getGhost();
+        cocos2d::ccColor3B getWaveTrail();
+        cocos2d::ccColor3B getDashFire();
+        cocos2d::ccColor3B getSpiderTeleport();
+        cocos2d::ccColor3B getFineOutline();
+
+        ColourConfig getPrimaryConfig();
+        ColourConfig getSecondaryConfig();
+        ColourConfig getGlowConfig();
+        ColourConfig getTrailConfig();
+        ColourConfig getGhostConfig();
+        ColourConfig getWaveTrailConfig();
+        ColourConfig getDashFireConfig();
+        ColourConfig getSpiderTeleportConfig();
+        ColourConfig getFineOutlineConfig();
+
+        void setPrimaryConfig(ColourConfig config);
+        void setSecondaryConfig(ColourConfig config);
+        void setGlowConfig(ColourConfig config);
+        void setTrailConfig(ColourConfig config);
+        void setGhostConfig(ColourConfig config);
+        void setWaveTrailConfig(ColourConfig config);
+        void setDashFireConfig(ColourConfig config);
+        void setSpiderTeleportConfig(ColourConfig config);
+        void setFineOutlineConfig(ColourConfig config);
+
+        bool getUseOverride(IconicEffectType type);
+        void setUseOverride(IconicEffectType type, bool v);
+
+        void save();
+        void load();
+};

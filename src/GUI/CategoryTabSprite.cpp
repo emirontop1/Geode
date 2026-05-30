@@ -1,0 +1,131 @@
+#include "CategoryTabSprite.hpp"
+
+#define SPRITE_INSET 3.5f
+
+CategoryTabSprite* CategoryTabSprite::create(CategoryTabType type, std::string name, std::string icon, bool useFrame)
+{
+    auto pRet = new CategoryTabSprite();
+
+    if (pRet && pRet->init(type, name, icon, useFrame))
+    {
+        pRet->autorelease();
+        return pRet;
+    }
+
+    CC_SAFE_DELETE(pRet);
+    return nullptr;
+}
+
+bool CategoryTabSprite::init(CategoryTabType type, std::string name, std::string icon, bool useFrame)
+{
+    if (!CCNode::init())
+        return false;
+
+    // outline = CCScale9Sprite::create("squareOverlay.png"_spr);
+    outline = CCScale9Sprite::create("GJ_square07.png");
+    outline->setAnchorPoint(ccp(0, 0));
+
+    background = CCScale9Sprite::create("square02b_small.png");
+    background->setColor(ccc3(0, 0, 0));
+    background->setOpacity(100);
+    background->setScale(0.5f);
+    background->setAnchorPoint(ccp(0, 0));
+
+    outline->setScale(0.6f);
+
+    if (!icon.empty())
+    {
+        if (useFrame)
+            sprite = CCSprite::createWithSpriteFrameName(icon.c_str());
+        else
+            sprite = CCSprite::create(icon.c_str());
+
+        if (sprite)
+        {
+            sprite->setAnchorPoint(ccp(0, 0.5f));
+            this->addChild(sprite, 4);
+        }
+    }
+
+    label = AdvLabelBMFont::createWithString(name.c_str(), "bigFont.fnt");
+    label->setAnchorPoint(ccp(0, 0.5f));
+
+    this->addChild(background);
+    this->addChild(outline);
+    this->addChild(label);
+    return true;
+}
+
+void CategoryTabSprite::updateSelection(CategorySelectionType type)
+{
+    outline->setVisible(type == CategorySelectionType::Selected);
+
+    switch (type)
+    {
+        case Deselected:
+            label->setColor(ccc3(180, 180, 180));
+            label->setOpacity(180);
+
+            if (sprite)
+            {
+                sprite->setColor(ccc3(180, 180, 180));
+                sprite->setOpacity(180);
+            }
+            break;
+
+        case Hovered:
+            label->setColor(ccc3(200, 200, 200));
+            label->setOpacity(255);
+
+            if (sprite)
+            {
+                sprite->setColor(ccc3(200, 200, 200));
+                sprite->setOpacity(255);
+            }
+            break;
+
+        case Selected:
+            label->setColor(ccc3(255, 255, 255));
+            label->setOpacity(255);
+
+            if (sprite)
+            {
+                sprite->setColor(ccc3(255, 255, 255));
+                sprite->setOpacity(255);
+            }
+            break;
+    };
+}
+
+void CategoryTabSprite::visit()
+{
+    auto contentSize = getContentSize();
+
+    label->limitLabelWidth((this->getContentWidth() - 7.5f) / 0.5f, 0.75f, 0.1f);
+    label->setScale(label->getScale() / 2);
+
+    outline->setContentSize(contentSize / 0.6f);
+    background->setContentSize(contentSize * 2);
+    
+    if (sprite && label->getContentWidth() != 0)
+    {
+        sprite->setPosition(ccp(SPRITE_INSET, getContentHeight() / 2));
+        sprite->setScale((getContentHeight() - (SPRITE_INSET * 2)) / sprite->getContentHeight());
+        label->limitLabelWidth(getContentWidth() - (SPRITE_INSET * 4 + sprite->getScaledContentWidth()), 0.375f, 0);
+        label->setPosition(ccp(SPRITE_INSET * 2 + sprite->getScaledContentWidth(), getContentHeight() / 2));
+    }
+
+    if (sprite && label->getContentWidth() == 0)
+    {
+        sprite->setAnchorPoint(ccp(0.5f, 0.5f));
+        sprite->setPosition(ccp(0, 0));
+    }
+
+    if (!sprite)
+    {
+        label->setAnchorPoint(ccp(0.5f, 0.5f));
+        label->setPosition(getContentSize() / 2);
+    }
+
+    CCNode::visit();
+}

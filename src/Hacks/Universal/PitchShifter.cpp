@@ -1,0 +1,115 @@
+#include "../../Client/InputModule.hpp"
+#include <Geode/modify/MenuLayer.hpp>
+#include "../Speedhack/Speedhack.hpp"
+
+using namespace geode::prelude;
+
+class PitchShifter : public Module
+{
+    protected:
+        FMOD::DSP* pitchDSP = nullptr;
+
+    public:
+        MODULE_SETUP(PitchShifter)
+        {
+            setID("pitch-shifter");
+            setCategory("Universal");
+        }
+
+        virtual void onToggle();
+};
+
+class PitchShifterOctaves : public InputModule
+{
+    public:
+        MODULE_SETUP(PitchShifterOctaves)
+        {
+            setName("Pitch");
+            setID("pitch-shifter/octaves");
+            setDescription("");
+
+            setDefaultString("12");
+            setPlaceholderString("Pitch");
+            setHint("semitones");
+
+            setPriority(1);
+
+            setStringFilter("1234567890.");
+            setMaxCharCount(4);
+        }
+
+        virtual void onToggle()
+        {
+            PitchShifter::get()->onToggle();
+        }
+};
+
+class PitchShifterMusicOnly : public Module
+{
+    public:
+        MODULE_SETUP(PitchShifterMusicOnly)
+        {
+            setID("pitch-shifter/music-only");
+            setPriority(2);
+            setDefaultEnabled(true);
+        }
+
+        virtual void onToggle()
+        {
+            PitchShifter::get()->onToggle();
+        }
+};
+
+class PitchShifterHighQuality : public Module
+{
+    public:
+        MODULE_SETUP(PitchShifterHighQuality)
+        {
+            setID("pitch-shifter/high-quality");
+            setPriority(3);
+            setDefaultEnabled(true);
+        }
+
+        virtual void onToggle()
+        {
+            PitchShifter::get()->onToggle();
+        }
+};
+
+SUBMIT_HACK(PitchShifter);
+SUBMIT_OPTION(PitchShifter, PitchShifterOctaves);
+SUBMIT_OPTION(PitchShifter, PitchShifterMusicOnly);
+SUBMIT_OPTION(PitchShifter, PitchShifterHighQuality);
+
+void PitchShifter::onToggle()
+{
+    auto masterGroup = Speedhack::get()->getMasterChannel();
+    auto musicChannel = FMODAudioEngine::get()->m_backgroundMusicChannel;
+
+    if (pitchDSP)
+    {
+        masterGroup->removeDSP(pitchDSP);
+        musicChannel->removeDSP(pitchDSP);
+        pitchDSP = nullptr;
+    }
+
+    if (!getRealEnabled())
+        return;
+
+    FMODAudioEngine::sharedEngine()->m_system->createDSPByType(FMOD_DSP_TYPE_PITCHSHIFT, &pitchDSP);
+
+    if (PitchShifterMusicOnly::get()->getRealEnabled())
+        musicChannel->addDSP(0, pitchDSP);
+    else
+        masterGroup->addDSP(0, pitchDSP);
+
+    pitchDSP->setParameterFloat(FMOD_DSP_PITCHSHIFT_PITCH, PitchShifterOctaves::get()->getStringFloat() / 12.0f);
+
+    if (PitchShifterHighQuality::get()->getRealEnabled())
+        pitchDSP->setParameterFloat(FMOD_DSP_PITCHSHIFT_FFTSIZE, 4096 * 8);
+}
+
+$on_game(Loaded)
+{
+    PitchShifter::get()->onToggle();
+}

@@ -1,0 +1,96 @@
+#include "LabelConfig.hpp"
+
+LabelConfig LabelConfig::createFromObject(matjson::Value obj)
+{
+    LabelConfig conf;
+
+    if (obj.contains("display_name") && obj["display_name"].isString())
+        conf.displayName = obj["display_name"].asString().unwrap();
+    else
+        conf.displayName = "Error Loading Label";
+
+    if (obj.contains("format") && obj["format"].isString())
+        conf.formatString = obj["format"].asString().unwrap();
+
+    if (obj.contains("scale") && obj["scale"].isNumber())
+        conf.scale = obj["scale"].asDouble().unwrap();
+
+    if (obj.contains("opacity") && obj["opacity"].isNumber())
+        conf.opacity = obj["opacity"].asDouble().unwrap();
+
+    if (obj.contains("font") && obj["font"].isString())
+        conf.font = obj["font"].asString().unwrap();
+
+    if (obj.contains("side") && obj["side"].isNumber())
+        conf.anchor = (LabelAnchor)obj["side"].asInt().unwrap();
+
+    if (obj.contains("offset.x") && obj["offset.x"].isNumber())
+        conf.offset.x = obj["offset.x"].asDouble().unwrap();
+
+    if (obj.contains("offset.y") && obj["offset.y"].isNumber())
+        conf.offset.y = obj["offset.y"].asDouble().unwrap();
+
+    if (obj.contains("cheat_indicator") && obj["cheat_indicator"].isBool())
+        conf.cheatIndicator= obj["cheat_indicator"].asBool().unwrap();
+
+    if (obj.contains("noclip_only") && obj["noclip_only"].isBool())
+        conf.noclipOnly = obj["noclip_only"].asBool().unwrap();
+
+    if (obj.contains("visible") && obj["visible"].isBool())
+        conf.visible = obj["visible"].asBool().unwrap();
+
+    if (obj.contains("label_type") && obj["label_type"].isNumber())
+        conf.type = (LabelType)obj["label_type"].asInt().unwrap();
+
+    if (obj.contains("rotation") && obj["rotation"].isNumber())
+        conf.rotation = obj["rotation"].asDouble().unwrap();
+
+    if (obj.contains("image_location") && obj["image_location"].isString())
+        conf.imageLocation = obj["image_location"].asString().unwrap();
+
+    
+
+    if (obj.contains("events") && obj["events"].isArray())
+    {
+        for (auto obj : obj["events"].asArray().unwrap())
+        {
+            LabelEvent event;
+            event.load(obj);
+
+            conf.events.push_back(event);
+        }
+    }
+
+    return conf;
+}
+
+matjson::Value LabelConfig::save()
+{
+    matjson::Value obj;
+
+    obj["display_name"] = displayName;
+    obj["format"] = formatString;
+    obj["scale"] = scale;
+    obj["opacity"] = opacity;
+    obj["font"] = font;
+    obj["side"] = (int)anchor;
+    obj["offset.x"] = offset.x;
+    obj["offset.y"] = offset.y;
+    obj["cheat_indicator"] = cheatIndicator;
+    obj["noclip_only"] = noclipOnly;
+    obj["visible"] = visible;
+    obj["label_type"] = (int)type;
+    obj["rotation"] = rotation;
+    obj["image_location"] = imageLocation;
+
+    matjson::Value eventsArr = obj.array();
+    
+    for (auto event : events)
+    {
+        eventsArr.asArray().unwrap().push_back(event.save());
+    }
+
+    obj["events"] = eventsArr;
+
+    return obj;
+}
